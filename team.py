@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -89,11 +90,21 @@ def my_claims(con):
 
 # ---------------------------------------------------------------- git plumbing (never touches the checkout)
 
+def _auth():
+    """Use the GitHub CLI's sign-in for this call only (scheduled runs can't answer a login prompt),
+    without changing anyone's global git config. Falls back to git's own helpers when gh isn't installed."""
+    gh = shutil.which("gh")
+    if not gh:
+        return []
+    gh = gh.replace("\\", "/")
+    return ["-c", "credential.https://github.com.helper=", "-c", f"credential.https://github.com.helper=!'{gh}' auth git-credential"]
+
+
 def _git(*args, stdin=None, env=None):
     e = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never", **(env or {}))
     flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW: no console pop-ups under pythonw
     try:  # bytes in/out: text mode would turn \n into \r\n on Windows and change the blobs per platform
-        p = subprocess.run(["git", "-C", str(ROOT), *args], input=stdin.encode() if stdin is not None else None,
+        p = subprocess.run(["git", *_auth(), "-C", str(ROOT), *args], input=stdin.encode() if stdin is not None else None,
                            capture_output=True, timeout=90, env=e, creationflags=flags)
     except (OSError, subprocess.TimeoutExpired) as ex:
         return 1, "", str(ex)
