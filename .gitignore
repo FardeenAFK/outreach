@@ -1,0 +1,18 @@
+# Personal data: never leaves this PC
+config.json
+config.tmp
+.config.*.tmp
+outreach.db
+outreach.db-*
+claimed_elsewhere.json
+work/
+reports/
+cv/
+*.log
+
+# Local-only files
+outreach-demo.gif
+*.bak-*
+__pycache__/
+*.pyc
+.claude/

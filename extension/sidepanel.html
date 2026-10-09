@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Outreach Queue</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header>
+    <div class="brand"><span id="dot" class="dot" title="server"></span>Outreach</div>
+    <select id="account" title="Account"></select>
+  </header>
+  <nav>
+    <button data-tab="today" class="on">Today</button>
+    <button data-tab="pipeline">Replies</button>
+    <button data-tab="jobs">Jobs</button>
+    <button data-tab="stats">Stats</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+  <main>
+    <section id="today"></section>
+    <section id="pipeline" hidden></section>
+    <section id="jobs" hidden></section>
+    <section id="stats" hidden></section>
+    <section id="settings" hidden>
+      <h3>Server</h3>
+      <label>Local API <input id="server" type="text"></label>
+      <h3>Daily caps <small>(ramp-up applies in weeks 1-2)</small></h3>
+      <div class="grid2">
+        <label>X <small>max 40</small><input id="cap-x" type="number" min="0" max="40"></label>
+        <label>Instagram <small>max 30</small><input id="cap-instagram" type="number" min="0" max="30"></label>
+        <label>LinkedIn <small>max 15</small><input id="cap-linkedin" type="number" min="0" max="15"></label>
+        <label>Facebook <small>max 20</small><input id="cap-facebook" type="number" min="0" max="20"></label>
+      </div>
+      <p class="muted">New Instagram account? Keep it at 5-10. Bans come from people ignoring or reporting you, not only from volume.</p>
+      <h3>Lead filters <small>(used from the next daily run)</small></h3>
+      <div class="grid2">
+        <label>Min subs <input id="f-min_subs" type="number"></label>
+        <label>Max subs <input id="f-max_subs" type="number"></label>
+        <label>Max days since last upload <input id="f-max_days_since_upload" type="number"></label>
+        <label>Min uploads in 90 days <input id="f-min_uploads_90d" type="number"></label>
+      </div>
+      <label>Niches to search (comma separated) <textarea id="f-niches" rows="2"></textarea></label>
+      <label>Exclude channels mentioning <textarea id="f-exclude_keywords" rows="2"></textarea></label>
+      <label>Only these countries (channels with no country listed are kept) <textarea id="f-countries_allow" rows="3"></textarea></label>
+      <label class="check"><input id="f-faceless_only" type="checkbox"> Faceless channels only</label>
+      <label class="check"><input id="f-require_dm_contact" type="checkbox"> Only channels with X / Instagram / LinkedIn listed</label>
+      <button id="save" class="primary">Save settings</button>
+      <p id="saved" class="muted"></p>
+    </section>
+  </main>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

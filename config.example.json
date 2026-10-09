@@ -1,0 +1,155 @@
+{
+  "sender_name": "YOUR_NAME",
+  "offer": "a free re-edit of the first 30 seconds of their latest video, no strings attached",
+  "us_based": false,
+  "profile": "WRITE_YOUR_PROFILE: what you edit (long-form YouTube, Shorts/Reels, ads...), the styles and niches you are good at, the software you actually have installed, and anything you can offer (fast turnaround, sound design...). Messages only ever claim what is written here.",
+  "not_installed": [],
+  "private_tools": [],
+  "server_port": 8777,
+  "accounts": {
+    "me": {
+      "label": "YOUR_NAME",
+      "caps": {
+        "x": 30,
+        "instagram": 20,
+        "linkedin": 15,
+        "facebook": 10
+      }
+    }
+  },
+  "ramp": {
+    "start_date": "SETUP_DATE",
+    "week1_pct": 60,
+    "week2_pct": 80
+  },
+  "followup_days": {
+    "x": [
+      4,
+      9
+    ],
+    "linkedin": [
+      5
+    ],
+    "instagram": [],
+    "facebook": []
+  },
+  "platform_preference": [
+    "x",
+    "instagram",
+    "linkedin",
+    "facebook"
+  ],
+  "fallback_platforms": [
+    "facebook"
+  ],
+  "filters": {
+    "min_subs": 10000,
+    "max_subs": 500000,
+    "max_days_since_upload": 60,
+    "min_uploads_90d": 2,
+    "languages": [
+      "en"
+    ],
+    "countries_allow": [
+      "United States",
+      "United Kingdom",
+      "Canada",
+      "Australia",
+      "New Zealand",
+      "Ireland",
+      "Germany",
+      "Netherlands",
+      "Sweden",
+      "Norway",
+      "Denmark",
+      "Finland",
+      "Switzerland",
+      "Austria",
+      "Belgium",
+      "France",
+      "Singapore",
+      "United Arab Emirates",
+      "Israel"
+    ],
+    "faceless_only": false,
+    "niches": [
+      "true crime documentary",
+      "business documentary",
+      "rise and fall of",
+      "history documentary",
+      "celebrity documentary",
+      "finance explained",
+      "science explained",
+      "biography documentary",
+      "mystery documentary",
+      "aviation documentary",
+      "cold case",
+      "company collapse"
+    ],
+    "niche_bonus_keywords": [
+      "documentary",
+      "true crime",
+      "crime",
+      "business",
+      "money",
+      "finance",
+      "history",
+      "celebrity",
+      "story",
+      "stories",
+      "explained",
+      "collapse",
+      "billion",
+      "empire"
+    ],
+    "exclude_keywords": [
+      "kids",
+      "asmr",
+      "lofi",
+      "music video",
+      "nursery"
+    ],
+    "require_dm_contact": true
+  },
+  "jobs": {
+    "include": [
+      "edit",
+      "motion",
+      "animat",
+      "after effects",
+      "premiere",
+      "geolayers",
+      "documentary",
+      "shorts",
+      "reels",
+      "post-production",
+      "post production"
+    ],
+    "exclude": [
+      "thumbnail designer",
+      "scriptwriter",
+      "script writer",
+      "writer",
+      "voice actor",
+      "voiceover artist",
+      "packaging strategist",
+      "manager",
+      "host",
+      "presenter",
+      "shooter",
+      "camera operator",
+      "videographer"
+    ],
+    "max_age_days": 45,
+    "max_pages": 12,
+    "dm_min_fit": 45
+  },
+  "daily": {
+    "new_leads_to_enrich": 120,
+    "new_leads_to_draft": 25,
+    "jobs_to_draft": 10
+  },
+  "team": {
+    "me": "YOUR_TEAM_NAME"
+  }
+}
