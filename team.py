@@ -1,16 +1,21 @@
 """Team split: every lead and job post belongs to exactly one teammate, the same answer on every PC.
 
-The member list and each member's claimed leads live on the repo's `team` branch (members.json and
-claimed/<name>.txt), apart from the code on main. `sync()` fetches that branch, keeps the member list in
-config.json -> team.members and the claims in work/team-claims.json, then publishes this PC's own claims.
-Offline or without git, the last synced copy is used. Claims are hashes, so the branch holds no names or links.
+The member list and each member's claims live on the repo's `team` branch, apart from the code on main:
+    members.json          the team, in join order (names are only ever APPENDED)
+    claimed/<name>.txt    hashes of every lead, social profile, email, job post and application that member has
+                          queued, contacted or applied to, so nobody else ever pitches that person
+    installs/<name>.txt   which PC uses that name, so two PCs can never both be "sami"
+`sync()` fetches the branch, keeps the member list in config.json -> team.members and the claims in
+work/team-claims.json, then publishes this PC's claims. A git checkout reads and writes; a folder without git
+(downloaded as a ZIP) can only read, through the GitHub API. Offline, the last synced copy is used.
 
-Rules for members.json: names are only ever APPENDED. Removing or reordering a name reshuffles who owns what.
-Someone who stops using the system keeps their place in the list.
+Removing or reordering a member name reshuffles who owns what. Someone who stops keeps their place in the list.
 
-    python engine.py team-sync          # fetch members + claims, publish mine (daily and finish run it too)
-    python engine.py team-join NAME     # add NAME to the team and make this PC that person
+    python engine.py team-sync [--take-over]   # fetch members + claims, publish mine (daily, finish, server do it too)
+    python engine.py team-join NAME            # add NAME to the team and make this PC that person
+    python engine.py check URL_OR_HANDLE       # is this person free, mine, or a teammate's?
 """
+import base64
 import hashlib
 import json
 import os
@@ -18,13 +23,22 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
 
-from core import ROOT, WORK, load_config, save_config, today
+from core import ROOT, WORK, load_config, save_config, now
 
 BRANCH = "team"
 REMOTE_REF = f"refs/remotes/origin/{BRANCH}"
+REPO_DEFAULT = "FardeenAFK/outreach"
 CLAIMS_CACHE = WORK / "team-claims.json"
+STATUS_FILE = WORK / "team-status.json"
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,23}$")
+SOCIAL_KEYS = ("x", "instagram", "linkedin", "facebook", "tiktok")
+CLAIMED_LEAD = ("to_draft", "queued", "contacted", "replied", "won", "dead")
+CLAIMED_JOB = ("to_draft", "drafted", "applied")  # not "dm": the DM lead itself is claimed only by the PC that queues it
 
 
 # ---------------------------------------------------------------- who owns a lead
@@ -42,6 +56,8 @@ def _jump(key, n):
 def owner(members, lead_id):
     """The first two members keep the original sha1 % 2 split, so leads already divided between them never move.
     Every later member takes an even share, and adding one only moves leads to the new person."""
+    if not members:
+        return None
     if len(members) < 2:
         return members[0]
     h = hashlib.sha1(lead_id.encode()).hexdigest()
@@ -54,16 +70,118 @@ def me(cfg):
 
 
 def members(cfg):
-    """Synced member list; a PC with no team at all works solo and owns every lead."""
-    return (cfg.get("team") or {}).get("members") or [me(cfg)]
+    """The synced member list. No list = no drafting, unless config says team.solo (someone working alone):
+    a fresh install that never synced must not treat every client as its own."""
+    t = cfg.get("team") or {}
+    if t.get("members"):
+        return t["members"]
+    return [me(cfg)] if t.get("solo") else []
 
 
-def claim_key(lead_id):
-    return hashlib.sha1(b"claim:" + lead_id.encode()).hexdigest()[:16]
+def status():
+    try:
+        return json.loads(STATUS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def ready(cfg):
+    """(ok, why): may this PC draft right now? Drafting is refused rather than risking a double pitch."""
+    t = cfg.get("team") or {}
+    if t.get("solo"):
+        return True, ""
+    st = status()
+    if st.get("conflict") and st.get("me") == me(cfg):
+        return False, st["conflict"]
+    mem = members(cfg)
+    if not mem:
+        return False, ("No team list yet. Run `python engine.py team-sync` (needs internet), or set "
+                       "\"solo\": true under team in config.json if you work alone.")
+    if me(cfg) not in mem:
+        return False, f"'{me(cfg)}' is not in the team list {mem}. Run `python engine.py team-join {me(cfg)}`."
+    return True, ""
+
+
+# ---------------------------------------------------------------- identities and claims
+
+def claim_key(value):
+    return hashlib.sha1(b"claim:" + value.encode()).hexdigest()[:16]
+
+
+PROFILE_HOSTS = ("x.com", "instagram.com", "linkedin.com", "tiktok.com", "facebook.com")
+TRACKING = re.compile(r"^(utm_.*|ref|ref_src|refid|referrer.*|fbclid|gclid|si|igsh|igshid|trk|trackingid|from|src|source|s|t)$", re.I)
+
+
+def norm_link(u):
+    """One spelling per person or post: x.com == twitter.com, no www/m., no trailing slash or tracking parameters.
+    Profiles drop the whole query; job links keep the parts that identify the post (indeed.com/viewjob?jk=...)."""
+    u = (u or "").strip()
+    if not u:
+        return ""
+    if u.lower().startswith("mailto:"):
+        return "e:" + u[7:].split("?")[0].strip().lower()
+    if "@" in u and "/" not in u and " " not in u and not u.startswith("@"):
+        return "e:" + u.lower()
+    if u.startswith("@"):  # a bare handle: can't know the platform, match it on all of them
+        return "h:" + u[1:].lower()
+    if "//" not in u:
+        u = "https://" + u
+    try:
+        p = urllib.parse.urlparse(u)
+    except ValueError:
+        return ""
+    raw = (p.hostname or "").lower()
+    path = re.sub(r"/+$", "", p.path)
+    if raw == "m.me":  # Messenger link = that Facebook profile
+        raw, path = "facebook.com", path
+    if raw == "ig.me" and path.lower().startswith("/m/"):
+        raw, path = "instagram.com", path[2:]
+    if raw == "youtu.be" and path:
+        raw, path, p = "youtube.com", "/watch", p._replace(query="v=" + path.strip("/"))
+    host = re.sub(r"^(www|m|mobile|web)\.", "", raw)
+    host = {"twitter.com": "x.com", "fb.com": "facebook.com"}.get(host, host)
+    if host in PROFILE_HOSTS or host.endswith(".linkedin.com"):
+        path = path.lower()
+        q = "?" + p.query if host == "facebook.com" and path == "/profile.php" and p.query else ""
+    else:
+        keep = sorted((k, v) for k, v in urllib.parse.parse_qsl(p.query) if not TRACKING.match(k))
+        q = ("?" + urllib.parse.urlencode(keep)) if keep else ""
+        path = path.lower() if "youtube.com" in host else path
+    return f"p:{host}{path}{q}" if host else ""
+
+
+def keys_for(*values):
+    """Claim keys for ids (lead/job ids as given) and links/emails/handles (normalised)."""
+    out = set()
+    for v in values:
+        if not v or not isinstance(v, str):
+            continue
+        v = v.strip()
+        out.add(claim_key(v))
+        n = norm_link(v) if ("/" in v or "@" in v or "." in v) else ""
+        if n:
+            out.add(claim_key(n))
+            if n.startswith("p:") and n.split("/")[0][2:] in ("x.com", "instagram.com", "tiktok.com"):
+                handle = n.split("/", 1)[1] if "/" in n else ""
+                if handle and "/" not in handle:
+                    out.add(claim_key("h:" + handle.lstrip("@")))  # so "@handle" typed in Check matches too
+    return out
+
+
+def lead_idents(lead):
+    """Everything that identifies the person behind a lead row."""
+    links = json.loads(lead["links"] or "{}") if lead["links"] else {}
+    vals = [lead["id"], lead["url"], lead["email"]]
+    try:
+        vals.append(lead["job_id"])
+    except (IndexError, KeyError):
+        pass
+    vals += [links.get(k) for k in SOCIAL_KEYS]
+    return [v for v in vals if isinstance(v, str) and v]
 
 
 class Taken:
-    """`lead_id in taken` = a teammate already queued or contacted it (before it was assigned here)."""
+    """`who(*idents)` -> the teammate who already claimed this person, or None. `x in taken` works for one value."""
 
     def __init__(self, cfg):
         mine = me(cfg)
@@ -71,21 +189,61 @@ class Taken:
             claims = json.loads(CLAIMS_CACHE.read_text(encoding="utf-8")) if CLAIMS_CACHE.exists() else {}
         except (OSError, ValueError):
             claims = {}
-        self.keys = {k for name, ks in claims.items() if name != mine for k in ks}
+        self.owner_of = {}
+        for name, ks in claims.items():
+            if name != mine:
+                for k in ks:
+                    self.owner_of.setdefault(k, name)
         legacy = ROOT / "claimed_elsewhere.json"  # the old zip package shipped raw ids
         self.ids = set(json.loads(legacy.read_text(encoding="utf-8"))) if legacy.exists() else set()
 
-    def __contains__(self, lead_id):
-        return lead_id in self.ids or claim_key(lead_id) in self.keys
+    def who(self, *idents):
+        for v in idents:
+            if v in self.ids:
+                return "teammate"
+        for k in keys_for(*idents):
+            if k in self.owner_of:
+                return self.owner_of[k]
+        return None
+
+    def __contains__(self, value):
+        return self.who(value) is not None
 
 
 def my_claims(con):
-    """Every lead and job this PC has queued, contacted or applied to, as sorted hashes."""
-    ids = {r[0] for r in con.execute(
-        "SELECT id FROM leads WHERE status IN ('to_draft','queued','contacted','replied','won','dead') "
-        "UNION SELECT DISTINCT lead_id FROM messages WHERE lead_id IS NOT NULL "
-        "UNION SELECT id FROM jobs WHERE status IN ('to_draft','drafted','applied')")}
-    return "\n".join(sorted(claim_key(i) for i in ids)) + "\n"
+    """Every person and post this PC has queued, contacted or applied to, as sorted hashes."""
+    vals = []
+    leads = con.execute(f"""SELECT * FROM leads WHERE status IN ({','.join('?' * len(CLAIMED_LEAD))})
+                            OR id IN (SELECT DISTINCT lead_id FROM messages)""", CLAIMED_LEAD).fetchall()
+    for l in leads:
+        vals += lead_idents(l)
+    vals += [r[0] for r in con.execute("SELECT DISTINCT profile_url FROM messages WHERE profile_url IS NOT NULL")]
+    for j in con.execute(f"SELECT id, url FROM jobs WHERE status IN ({','.join('?' * len(CLAIMED_JOB))})", CLAIMED_JOB):
+        vals += [j["id"], j["url"]]
+    vals += [r[0] for r in con.execute("SELECT url FROM applications WHERE url IS NOT NULL AND url != ''")]
+    return "\n".join(sorted(keys_for(*vals))) + "\n"
+
+
+def check(con, cfg, query):
+    """Free / mine / teammate for a pasted link, @handle or email. Used by the panel's "Check a link"."""
+    q = (query or "").strip()
+    if not q:
+        return {"status": "empty"}
+    keys = keys_for(q) | keys_for("@" + q.lstrip("@")) if "/" not in q and "@" not in q[1:] else keys_for(q)
+    mine = keys & set(my_claims(con).split())
+    if mine:
+        return {"status": "mine", "detail": "You already have this person or post (queued, contacted or applied)."}
+    t = Taken(cfg)
+    who = None
+    for k in keys:
+        who = t.owner_of.get(k)
+        if who:
+            break
+    if who:
+        return {"status": "teammate", "who": who, "detail": f"{who} already has this person or post. Leave it to them."}
+    known = owner(members(cfg), q) if members(cfg) else None
+    return {"status": "free", "detail": "Nobody on the team has contacted this one yet.",
+            "split_owner": known if q.startswith("UC") else None}
 
 
 # ---------------------------------------------------------------- git plumbing (never touches the checkout)
@@ -112,11 +270,23 @@ def _git(*args, stdin=None, env=None):
     return p.returncode, dec(p.stdout), dec(p.stderr)
 
 
-def _ready():
-    if not (ROOT / ".git").exists():
-        return "this folder is not a git checkout"
+def _git_ready():
+    if not (ROOT / ".git").exists() or not shutil.which("git"):
+        return False
     rc, out, _ = _git("remote", "get-url", "origin")
-    return None if rc == 0 and out else "no 'origin' remote"
+    return rc == 0 and bool(out)
+
+
+def _repo(cfg):
+    r = (cfg.get("team") or {}).get("repo")
+    if r:
+        return r
+    if _git_ready():
+        url = _git("remote", "get-url", "origin")[1]
+        m = re.search(r"github\.com[/:]([^/]+/[^/.]+)", url)
+        if m:
+            return m.group(1)
+    return REPO_DEFAULT
 
 
 def _fetch():
@@ -130,18 +300,40 @@ def _fetch():
     raise RuntimeError(f"git fetch failed: {err[:300]}")
 
 
-def _read_remote():
+def _read_git():
     rc, out, _ = _git("ls-tree", "-r", "--name-only", REMOTE_REF)
     files = out.splitlines() if rc == 0 else []
-    mem = []
-    if "members.json" in files:
-        mem = json.loads(_git("show", f"{REMOTE_REF}:members.json")[1] or "[]")
-    claims = {}
-    for f in files:
-        m = re.fullmatch(r"claimed/([a-z0-9_-]+)\.txt", f)
+    return {f: _git("show", f"{REMOTE_REF}:{f}")[1] for f in files}
+
+
+def _read_https(repo):
+    """Read-only copy of the team branch through the GitHub API (works on a public repo without git or sign-in)."""
+    def get(url):
+        req = urllib.request.Request(url, headers={"User-Agent": "outreach-team-sync", "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=25) as r:
+            return json.loads(r.read().decode("utf-8"))
+    base = f"https://api.github.com/repos/{repo}"
+    try:
+        tree = get(f"{base}/git/trees/{BRANCH}?recursive=1")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+    out = {}
+    for t in tree.get("tree", []):
+        if t.get("type") == "blob" and re.fullmatch(r"members\.json|(claimed|installs)/[a-z0-9_-]+\.txt", t["path"]):
+            out[t["path"]] = base64.b64decode(get(f"{base}/git/blobs/{t['sha']}")["content"]).decode("utf-8")
+    return out
+
+
+def _parse(files):
+    mem = json.loads(files.get("members.json") or "[]")
+    claims, installs = {}, {}
+    for f, text in files.items():
+        m = re.fullmatch(r"(claimed|installs)/([a-z0-9_-]+)\.txt", f)
         if m:
-            claims[m.group(1)] = _git("show", f"{REMOTE_REF}:{f}")[1].split()
-    return mem, claims
+            (claims if m.group(1) == "claimed" else installs)[m.group(2)] = text.split()
+    return mem, claims, {k: (v[0] if v else "") for k, v in installs.items()}
 
 
 def _commit_push(changes, who, message):
@@ -179,66 +371,105 @@ def _commit_push(changes, who, message):
 
 # ---------------------------------------------------------------- commands
 
-def _store(cfg, mem, claims):
+def install_id(cfg):
+    t = cfg.setdefault("team", {})
+    if not t.get("install"):
+        t["install"] = uuid.uuid4().hex[:12]
+        save_config(cfg)
+    return t["install"]
+
+
+def _write_status(st):
+    STATUS_FILE.write_text(json.dumps(st, indent=1), encoding="utf-8")
+    return st
+
+
+def sync(con, publish=True, take_over=False, quiet=False):
+    """Fetch the member list and teammates' claims; publish this PC's claims. Returns a status dict."""
+    say = (lambda *a: None) if quiet else print
+    cfg = load_config()
+    name = me(cfg)
+    st = {"synced": now(), "me": name, "mode": "git" if _git_ready() else "https", "conflict": None, "error": None}
+    if (cfg.get("team") or {}).get("solo"):
+        st.update(mode="solo", members=[name])
+        say("team: solo mode (team.solo is true), nothing to sync")
+        return _write_status(st)
+    try:
+        files = (_read_git() if _fetch() else None) if st["mode"] == "git" else _read_https(_repo(cfg))
+    except Exception as e:
+        old = status()
+        st.update(error=f"{type(e).__name__}: {str(e)[:200]}", members=members(cfg),
+                  conflict=old.get("conflict") if old.get("me") == name else None)
+        say(f"team: sync failed ({st['error']}), using the last synced copy")
+        return _write_status(st)
+    has_branch = files is not None
+    mem, claims, installs = _parse(files or {})
+    if not mem:
+        mem = list((cfg.get("team") or {}).get("members") or [])
+    mine_id = install_id(cfg)
+    if installs.get(name) and installs[name] != mine_id and not take_over:
+        st["conflict"] = (f"Another PC already uses the team name '{name}'. Join under your own name "
+                          f"(`python engine.py team-join yourname`). Same person on a new PC? "
+                          f"Run `python engine.py team-sync --take-over`.")
     t = cfg.setdefault("team", {})
     if mem and t.get("members") != mem:
         t["members"] = mem
         save_config(cfg)
-    CLAIMS_CACHE.write_text(json.dumps(claims, indent=0), encoding="utf-8")
-
-
-def sync(con, publish=True):
-    """Fetch the member list and teammates' claims; publish this PC's claims. Never fatal for the daily run."""
-    cfg = load_config()
-    why = _ready()
-    if why:
-        print(f"team: {why}, using the last synced copy ({len(members(cfg))} members)")
-        return
-    name = me(cfg)
-    has_branch = _fetch()
-    mem, claims = _read_remote() if has_branch else ([], {})
-    if not mem:  # first PC to sync creates the list from its config
-        mem = members(cfg)
+    CLAIMS_CACHE.write_text(json.dumps(claims), encoding="utf-8")
     if name not in mem:
-        print(f"team: WARNING '{name}' is not in the member list {mem}. Run `python engine.py team-join {name}`; "
-              "until then this PC drafts nothing.")
-    _store(cfg, mem, claims)
-    if publish and name in mem:
+        say(f"team: WARNING '{name}' is not in the member list {mem}. Run `python engine.py team-join {name}`; "
+            "until then this PC drafts nothing.")
+    published, text = None, ""
+    if publish and name in mem and not st["conflict"]:
         text = my_claims(con)
-        if claims.get(name) != text.split() or not has_branch:
+        if st["mode"] != "git":
+            published = "read-only (no git checkout: install with git clone so teammates see your claims)"
+        elif claims.get(name) != text.split() or installs.get(name) != mine_id or not has_branch:
             def changes(has_base):
-                out = {f"claimed/{name}.txt": text}
+                out = {f"claimed/{name}.txt": text, f"installs/{name}.txt": mine_id + "\n"}
                 if not has_base:
                     out["members.json"] = json.dumps(mem, indent=1) + "\n"
                 return out
-            state = _commit_push(changes, name, f"claims: {name} {today()}")
-            print(f"team: published {len(text.split())} claims ({state})")
+            published = _commit_push(changes, name, f"claims: {name} {now()[:10]}")
+        else:
+            published = "unchanged"
     others = sum(len(v) for k, v in claims.items() if k != name)
-    print(f"team: {len(mem)} members {mem}, this PC is '{name}', {others} leads claimed by teammates")
+    st.update(members=mem, claims_mine=len(text.split()) if text else len(claims.get(name, [])),
+              claims_others=others, published=published)
+    if st["conflict"]:
+        say("team: CONFLICT " + st["conflict"])
+    say(f"team: {len(mem)} members {mem}, this PC is '{name}', {others} claims from teammates"
+        + (f", mine: {published}" if published else ""))
+    return _write_status(st)
 
 
 def join(con, name):
     name = name.strip().lower()
     if not NAME_RE.match(name):
         sys.exit("team name: 2-24 characters, lowercase letters, digits, - or _ (e.g. 'sami')")
-    why = _ready()
-    if why:
-        sys.exit(f"team-join needs the git checkout from GitHub ({why}).")
+    if not _git_ready():
+        sys.exit("team-join needs the git checkout from GitHub (git clone), not a ZIP download.")
     cfg = load_config()
+    mine_id = install_id(cfg)
     holder = {}
 
     def changes(has_base):
-        mem = _read_remote()[0] if has_base else []
+        files = _read_git() if has_base else {}
+        mem, _, installs = _parse(files)
         if not mem:  # no list on GitHub yet: start from the one this PC already had, if any
             mem = list((cfg.get("team") or {}).get("members") or [])
+        if installs.get(name) and installs[name] != mine_id:
+            raise SystemExit(f"'{name}' is already used by another PC. Pick a different team name.")
         if name not in mem:
             mem = mem + [name]  # append only: earlier members keep everything they own
         holder["mem"] = mem
-        return {"members.json": json.dumps(mem, indent=1) + "\n"}
+        return {"members.json": json.dumps(mem, indent=1) + "\n", f"installs/{name}.txt": mine_id + "\n"}
 
     state = _commit_push(changes, name, f"join: {name}")
+    cfg = load_config()
     cfg.setdefault("team", {})["me"] = name
     cfg["team"]["members"] = holder["mem"]
+    cfg["team"].pop("solo", None)
     save_config(cfg)
     print(f"team: '{name}' is in ({state}). Members in order: {holder['mem']}")
     sync(con)

@@ -11,8 +11,9 @@
     python engine.py finish [work/drafts.json] # check drafts -> import -> report, one command
     python engine.py report                    # today's summary -> reports/YYYY-MM-DD.md
     python engine.py status                    # counts
-    python engine.py team-sync                 # fetch teammates + their claimed leads, publish mine (daily/finish do it too)
+    python engine.py team-sync [--take-over]   # fetch teammates + their claimed leads, publish mine (daily/finish do it too)
     python engine.py team-join NAME            # add NAME to the team on GitHub and make this PC that person
+    python engine.py check URL_OR_HANDLE       # before messaging anyone by hand: free, mine, or a teammate's?
 """
 import argparse
 import json
@@ -35,7 +36,7 @@ UA = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 # Platform message limits the drafter must respect.
-CHAR_LIMITS = {"x": 450, "instagram": 450, "linkedin": 600, "facebook": 600}
+CHAR_LIMITS = {"x": 450, "instagram": 450, "linkedin": 600, "facebook": 600, "email": 1500}
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -480,16 +481,36 @@ def cmd_to_draft(args):
     account = args.account
     limit = args.limit or cfg["daily"]["new_leads_to_draft"]
     con = db()
-    me = (cfg.get("team") or {}).get("me", "me")
+    path = WORK / "leads_to_draft.json"
+    ok, why = team.ready(cfg)
+    if not ok:  # never guess the split: a wrong guess means two people pitching the same client
+        path.write_text(json.dumps({"account": account, "sender_name": cfg["sender_name"], "leads": [],
+                                    "blocked": why}, indent=1, ensure_ascii=False), encoding="utf-8")
+        print("to-draft: NOT DRAFTING TODAY:", why)
+        return
+    me = team.me(cfg)
     taken = claimed_elsewhere(cfg)
-    for r in con.execute("SELECT id FROM leads WHERE status='enriched'").fetchall():
-        if lead_owner(cfg, r["id"]) != me or r["id"] in taken:
-            con.execute("UPDATE leads SET status='partner', note='belongs to teammate', updated=? WHERE id=?", (now(), r["id"]))
+    email_on = effective_caps(cfg, account).get("email", 0) > 0
+    if email_on:  # channels whose only public contact is an email become leads for the email lane
+        con.execute("UPDATE leads SET status='enriched', updated=? WHERE status='email_only'", (now(),))
+    mine = {team.norm_link(u) for (u,) in con.execute("SELECT DISTINCT profile_url FROM messages WHERE profile_url IS NOT NULL")}
+    mine.discard("")
+    for r in con.execute("SELECT * FROM leads WHERE status='enriched'").fetchall():
+        idents = team.lead_idents(r)
+        who = taken.who(*idents)
+        if lead_owner(cfg, r["id"]) != me or who:
+            con.execute("UPDATE leads SET status='partner', note=?, updated=? WHERE id=?",
+                        (f"belongs to {who}" if who and who != "teammate" else "belongs to teammate", now(), r["id"]))
+        elif any(team.norm_link(v) in mine for v in idents[1:]):  # same person under another channel/job id
+            con.execute("UPDATE leads SET status='filtered', note='same person as a lead you already messaged', updated=? "
+                        "WHERE id=?", (now(), r["id"]))
     con.commit()
     rows = con.execute("SELECT * FROM leads WHERE status='enriched' ORDER BY score DESC LIMIT ?", (limit,)).fetchall()
     out = []
     for r in rows:
         links = json.loads(r["links"] or "{}")
+        if email_on and r["email"]:
+            links["email"] = "mailto:" + r["email"].strip()
         plat = pick_platform(con, cfg, links, account)
         if not plat:
             continue
@@ -497,7 +518,8 @@ def cmd_to_draft(args):
         out.append({
             "id": r["id"], "name": r["name"], "channel": r["url"], "subs": r["subs"], "country": r["country"],
             "platform": plat, "profile_url": links[plat], "char_limit": CHAR_LIMITS[plat],
-            "links_allowed": plat != "instagram",
+            "links_allowed": plat not in ("instagram", "facebook"),
+            "subject_needed": plat == "email",
             "followups_needed": len(cfg["followup_days"].get(plat, [])),
             "linkedin_flow": "connect-without-note, then DM after accept" if plat == "linkedin" else None,
             "signals": json.loads(r["signals"] or "[]"),
@@ -509,7 +531,6 @@ def cmd_to_draft(args):
         })
         con.execute("UPDATE leads SET status='to_draft', platform=?, updated=? WHERE id=?", (plat, now(), r["id"]))
     con.commit()
-    path = WORK / "leads_to_draft.json"
     path.write_text(json.dumps({"account": account, "sender_name": cfg["sender_name"], "offer": cfg["offer"],
                                 "sender_profile": cfg.get("profile", ""), "sender_us_based": bool(cfg.get("us_based")),
                                 "leads": out}, indent=1, ensure_ascii=False), encoding="utf-8")
@@ -534,12 +555,14 @@ def cmd_import_drafts(args):
         plat = {"twitter": "x"}.get((d.get("platform") or lead["platform"] or "").lower(),
                                      (d.get("platform") or lead["platform"] or "").lower())
         links = json.loads(lead["links"] or "{}")
-        url = links.get(plat)
+        url = links.get(plat) if plat != "email" else ("mailto:" + lead["email"].strip() if lead["email"] else None)
         first = (d.get("first") or "").strip()
+        subject = (d.get("subject") or "").strip() if plat == "email" else None
         why = ("unknown platform '%s'" % plat if plat not in PLATFORMS else
                "no %s link" % plat if not url else
                "LinkedIn company page (can't connect/DM)" if plat == "linkedin" and "/in/" not in url else
-               "empty first message" if not first else None)
+               "empty first message" if not first else
+               "email without a subject" if plat == "email" and not subject else None)
         if why:
             print(f"skipped {lead['name']}: {why}"); continue
         if con.execute("SELECT 1 FROM messages WHERE lead_id=? AND account=? AND step=0", (d["id"], account)).fetchone():
@@ -556,11 +579,12 @@ def cmd_import_drafts(args):
         else:
             if len(first) > CHAR_LIMITS[plat]:
                 print(f"warning: {lead['name']} first message {len(first)} chars > {CHAR_LIMITS[plat]}")
-            con.execute("INSERT INTO messages(lead_id, account, platform, profile_url, step, body, status, due_date) VALUES (?,?,?,?,?,?,?,?)",
-                        (d["id"], account, plat, url, 0, first, "queued", today()))
+            con.execute("INSERT INTO messages(lead_id, account, platform, profile_url, step, body, status, due_date, subject) "
+                        "VALUES (?,?,?,?,?,?,?,?,?)", (d["id"], account, plat, url, 0, first, "queued", today(), subject))
             for k, fu in enumerate((d.get("followups") or [])[:len(cfg["followup_days"].get(plat, []))], start=1):
-                con.execute("INSERT INTO messages(lead_id, account, platform, profile_url, step, body, status) VALUES (?,?,?,?,?,?,?)",
-                            (d["id"], account, plat, url, k, fu.strip(), "waiting"))
+                con.execute("INSERT INTO messages(lead_id, account, platform, profile_url, step, body, status, subject) "
+                            "VALUES (?,?,?,?,?,?,?,?)", (d["id"], account, plat, url, k, fu.strip(), "waiting",
+                                                         ("Re: " + subject) if subject else None))
         con.execute("UPDATE leads SET status='queued', platform=?, updated=? WHERE id=?", (plat, now(), d["id"]))
         n_leads += 1
     for sid in data.get("skip_leads", []):
@@ -665,15 +689,20 @@ def cmd_jobs(args):
             continue
         con.execute("""INSERT INTO jobs(id, board, title, company, pay, url, posted, text, fit, status, created, updated)
                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (key, board, title, company, pay, url, posted, text[:3000], 60, "new", now(), now()))
+                    (key, board, title, company, pay, url, posted, text[:3000], 50 if board == "Bluesky" else 60, "new", now(), now()))
         extra += 1
     con.commit()
     print(f"other boards: {extra} new editing jobs")
-    me = (cfg.get("team") or {}).get("me", "me")
+    me = team.me(cfg)
     taken = claimed_elsewhere(cfg)
     con.execute("UPDATE jobs SET status='new' WHERE status='to_draft'")  # last export never drafted: offer again
+    ok, why = team.ready(cfg)
+    if not ok:
+        print("jobs: NOT DRAFTING PROPOSALS TODAY:", why)
+    partner_posts = {r[0] for r in con.execute("SELECT job_id FROM leads WHERE job_id IS NOT NULL AND status='partner'")}
     rows = [r for r in con.execute("SELECT * FROM jobs WHERE status='new' ORDER BY fit DESC").fetchall()
-            if lead_owner(cfg, r["id"]) == me and r["id"] not in taken][:cfg["daily"]["jobs_to_draft"]]  # teammates never apply to the same post
+            if ok and lead_owner(cfg, r["id"]) == me and not taken.who(r["id"], r["url"])
+            and r["id"] not in partner_posts][:cfg["daily"]["jobs_to_draft"]]  # teammates never apply to the same post
     out = [{"id": r["id"], "title": r["title"], "company": r["company"], "channel": r["channel_url"], "pay": r["pay"],
             "url": r["url"], "posted": r["posted"], "fit": r["fit"], "text": r["text"][:2500]} for r in rows]
     for r in rows:
@@ -861,48 +890,135 @@ def cmd_job_leads(args):
     print(f"job-leads: {made} posters with socials, {no_socials} without (those stay in the Jobs tab)")
 
 
-# Other boards with public feeds. Editing jobs are rare there (~1-2/month each), so the title filter is strict.
-BOARD_TITLE = re.compile(r"video[ -]?edit|motion (design|graphic)|youtube|video (creator|producer)|post[- ]production", re.I)
+# Other boards, ONLY through feeds/APIs their owners publish for automated reading (checked 2026-10-10:
+# terms, limits, attribution). Each is called once per morning run and the panel links back to the source.
+# Sites that ban bots (Indeed, Upwork, LinkedIn, Freelancer, Reddit, Fiverr...) are manual links in the Jobs tab.
+JOB_SOURCES = ["Himalayas", "Remote First Jobs", "Remote OK", "Jobicy", "Work With Indies", "Open Assignments",
+               "Dribbble", "We Work Remotely", "Bluesky hiring posts"]  # Bluesky last: originals win over repost bots
+BOARD_TITLE = re.compile(r"video[ -]?edit|motion (design|graphic)|youtube|video (creator|producer|content)|post[- ]production|"
+                         r"trailer editor|short[- ]?form|preditor|\banimator\b|2d anim|after effects|reels? editor|"
+                         r"tiktok editor|content editor|video specialist|videographer[ /&]+editor", re.I)
+BOARD_SKIP = re.compile(r"interpreter|engineer|manager|copy[ -]?editor|editor[- ]in[- ]chief|news editor|managing editor|"
+                        r"features editor|photo editor|writer|developer|3d (character )?rigger", re.I)
+HIRING_POST = re.compile(r"#hiring|\[hiring\]|\bis hiring\b|^\W*hiring\b|\bwe'?re hiring\b|\bapply\b|\bjob:", re.I | re.M)
+
+
+def _rss(board, url, text=True):
+    import xml.etree.ElementTree as ET
+    out = []
+    for it in ET.fromstring(get(url)).findall(".//item"):
+        pub = it.findtext("pubDate") or ""
+        try:
+            pub = dt.datetime.strptime(pub[:16], "%a, %d %b %Y").date().isoformat()
+        except ValueError:
+            pub = ""
+        out.append((board, it.findtext("guid") or it.findtext("link"), it.findtext("title"), "", it.findtext("link"),
+                    pub, html_text(it.findtext("description") or "") if text else "", "unlisted"))
+    return out
+
+
+def _himalayas(cfg):
+    """Himalayas public API (attribution + link back). locationRestrictions = who may apply; empty = worldwide."""
+    out, mine = [], ((cfg.get("jobs") or {}).get("country") or "").strip().lower()
+    for q, pages in (("video editor", 3), ("motion designer", 1)):
+        for page in range(1, pages + 1):
+            data = get(f"https://himalayas.app/jobs/api/search?q={urllib.parse.quote(q)}&sort=recent&page={page}", as_json=True)
+            for j in data.get("jobs") or []:
+                where = j.get("locationRestrictions") or []
+                if mine and where and mine not in [w.lower() for w in where]:
+                    continue  # not open to the sender's country
+                pay = (f"{j.get('currency') or '$'}{j['minSalary']}-{j.get('maxSalary') or ''}/{j.get('salaryPeriod') or ''}"
+                       if j.get("minSalary") else "unlisted")
+                text = ("Open to: " + (", ".join(where) if where else "worldwide") + "\n" +
+                        html_text(j.get("description") or j.get("excerpt") or ""))
+                posted = dt.datetime.fromtimestamp(j["pubDate"]).date().isoformat() if j.get("pubDate") else ""
+                out.append(("Himalayas", j.get("guid") or j.get("applicationLink"), j.get("title"), j.get("companyName"),
+                            j.get("guid") or j.get("applicationLink"), posted, text, pay))
+            time.sleep(1.0)
+    return out
+
+
+def _bluesky():
+    """Public Bluesky search (read only, never replies or DMs). Repost bots copy other boards: keep one per apply link."""
+    out, seen = [], set()
+    for q in ('"video editor" hiring', '"motion designer" hiring'):
+        data = get("https://api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=" + urllib.parse.quote(q) + "&sort=latest&limit=50",
+                   as_json=True)
+        for post in data.get("posts") or []:
+            rec, author = post.get("record") or {}, post.get("author") or {}
+            text = rec.get("text") or ""
+            ext = ((post.get("embed") or {}).get("external") or {})
+            if rec.get("reply") or not HIRING_POST.search(text + "\n" + (ext.get("description") or "")):
+                continue
+            link = ext.get("uri") or f"https://bsky.app/profile/{author.get('handle')}/post/{post.get('uri', '').rsplit('/', 1)[-1]}"
+            if link in seen:
+                continue
+            seen.add(link)
+            title = (ext.get("title") or text.split("\n")[0])[:140]
+            out.append(("Bluesky", post.get("uri"), title, author.get("displayName") or author.get("handle"), link,
+                        (rec.get("createdAt") or "")[:10], f"{text}\n{ext.get('description') or ''}", "unlisted"))
+        time.sleep(1.0)
+    return out
+
+
+def _remote_first():
+    """Remote First Jobs API (link back, don't resubmit elsewhere). Title search is ignored server-side: filter here."""
+    out = []
+    for page in (0, 1):
+        data = get(f"https://remotefirstjobs.com/api/search-jobs?category=design&page={page}", as_json=True)
+        for j in data.get("jobs") or []:
+            where = j.get("locations") or []
+            out.append(("Remote First Jobs", j.get("id"), j.get("title"), j.get("company_name"), j.get("url"),
+                        (j.get("published_at") or "")[:10], "Open to: " + (", ".join(where) if where else "worldwide"),
+                        f"${j['salary_min']}-{j['salary_max']}" if j.get("salary_min") else "unlisted"))
+    return out
 
 
 def fetch_other_boards(cfg):
-    import xml.etree.ElementTree as ET
+    on = {name: True for name in JOB_SOURCES} | ((cfg.get("jobs") or {}).get("sources") or {})
+    calls = {
+        "Himalayas": lambda: _himalayas(cfg),
+        "Bluesky hiring posts": _bluesky,
+        "Remote First Jobs": _remote_first,
+        "Remote OK": lambda: [("Remote OK", j.get("id"), j.get("position"), j.get("company"), j.get("url"),
+                               (j.get("date") or "")[:10], html_text(j.get("description") or ""),
+                               f"${j['salary_min']}-{j['salary_max']}" if j.get("salary_min") else "unlisted")
+                              for j in get("https://remoteok.com/api?tags=video", as_json=True)[1:]],  # [0] = legal notice
+        "Jobicy": lambda: [("Jobicy", j["id"], j["jobTitle"], j.get("companyName"), j["url"], (j.get("pubDate") or "")[:10],
+                            html_text(j.get("jobDescription") or ""), "unlisted")
+                           for q in ("tag=video%20editor", "industry=design-multimedia")
+                           for j in get(f"https://jobicy.com/api/v2/remote-jobs?count=100&{q}", as_json=True).get("jobs", [])],
+        "Work With Indies": lambda: _rss("Work With Indies", "https://workwithindies.com/careers/rss.xml"),
+        "Open Assignments": lambda: [r for r in _rss("Open Assignments", "https://openassignments.com/feed.xml")
+                                     if re.search(r"remote", (r[2] or "") + " " + (r[6] or ""), re.I)],
+        "Dribbble": lambda: _rss("Dribbble", "https://dribbble.com/jobs.rss"),
+        # WWR's API terms forbid storing their data: keep only the title + link, never the description
+        "We Work Remotely": lambda: _rss("We Work Remotely", "https://weworkremotely.com/remote-jobs.rss", text=False),
+    }
     out = []
-    try:
-        for j in get("https://remoteok.com/api?tag=video", as_json=True)[1:]:
-            out.append(("Remote OK", j.get("id"), j.get("position"), j.get("company"), j.get("url"), (j.get("date") or "")[:10],
-                        html_text(j.get("description") or ""),
-                        f"${j['salary_min']}-{j['salary_max']}" if j.get("salary_min") else "unlisted"))
-    except Exception as e:
-        print("Remote OK failed:", e)
-    try:
-        for j in get("https://jobicy.com/api/v2/remote-jobs?count=50&tag=video", as_json=True)["jobs"]:
-            out.append(("Jobicy", j["id"], j["jobTitle"], j.get("companyName"), j["url"], j["pubDate"][:10],
-                        html_text(j.get("jobDescription") or ""), "unlisted"))
-    except Exception as e:
-        print("Jobicy failed:", e)
-    for board, url in (("We Work Remotely", "https://weworkremotely.com/remote-jobs.rss"), ("Dribbble", "https://dribbble.com/jobs.rss")):
-        try:
-            for it in ET.fromstring(get(url)).findall(".//item"):
-                pub = it.findtext("pubDate") or ""
-                try:
-                    pub = dt.datetime.strptime(pub[:16], "%a, %d %b %Y").date().isoformat()
-                except ValueError:
-                    pub = ""
-                out.append((board, it.findtext("guid") or it.findtext("link"), it.findtext("title"), "", it.findtext("link"),
-                            pub, html_text(it.findtext("description") or ""), "unlisted"))
-        except Exception as e:
-            print(board, "failed:", e)
-    keep = []
-    for board, jid, title, company, url, posted, text, pay in out:
-        if not title or not BOARD_TITLE.search(title) or re.search(r"interpreter|engineer|manager", title, re.I):
+    for name in JOB_SOURCES:
+        if not on.get(name):
             continue
         try:
-            if posted and (dt.date.today() - dt.date.fromisoformat(posted)).days > 30:
+            got = calls[name]()
+            out += got
+        except Exception as e:
+            print(f"{name} failed: {type(e).__name__}: {str(e)[:120]}")
+    max_age = min(45, (cfg.get("jobs") or {}).get("max_age_days", 30))
+    skip_words = [w.lower() for w in (cfg.get("jobs") or {}).get("exclude", [])]
+    keep, seen_urls = [], set()
+    for board, jid, title, company, url, posted, text, pay in out:
+        if not title or not jid or not BOARD_TITLE.search(title) or BOARD_SKIP.search(title):
+            continue
+        if any(w in title.lower() for w in skip_words) or url in seen_urls:
+            continue
+        try:
+            if posted and (dt.date.today() - dt.date.fromisoformat(posted)).days > max_age:
                 continue
         except ValueError:
             pass
-        keep.append((board, str(jid), title, company, url, posted, text, pay))
+        seen_urls.add(url)
+        keep.append((board, str(jid), title.strip(), company or "", url, posted, text or "", pay))
     return keep
 
 
@@ -924,8 +1040,17 @@ def stats(con, cfg, account=None, day=None):
     leads = dict(con.execute("SELECT status, COUNT(*) FROM leads GROUP BY status").fetchall())
     jobs = dict(con.execute("SELECT status, COUNT(*) FROM jobs GROUP BY status").fetchall())
     applied_today = con.execute("SELECT COUNT(*) FROM events WHERE day=? AND type='applied'", (day,)).fetchone()[0]
+    history = []
+    for i in range(13, -1, -1):  # last 14 days, oldest first, for the Stats chart
+        d = add_days(-i, day)
+        row = dict(con.execute(f"SELECT type, COUNT(*) FROM events WHERE day=? {acc_clause} GROUP BY type", [d] + params).fetchall())
+        history.append({"day": d, "sent": row.get("sent", 0), "replied": row.get("replied", 0), "applied": row.get("applied", 0)})
+    by_platform = {p: {t: con.execute(f"SELECT COUNT(*) FROM events WHERE type=? AND platform=? {acc_clause}",
+                                      [t, p] + params).fetchone()[0] for t in ("sent", "replied", "won")} for p in PLATFORMS}
+    applications = dict(con.execute("SELECT status, COUNT(*) FROM applications GROUP BY status").fetchall())
     return {"day": day, "sent_today": sent, "queued_due": queued, "week": week, "total": total,
-            "leads": leads, "jobs": jobs, "applied_today": applied_today,
+            "leads": leads, "jobs": jobs, "applied_today": applied_today, "history": history,
+            "by_platform": by_platform, "applications": applications,
             "caps": effective_caps(cfg, account) if account else None}
 
 
@@ -1033,14 +1158,18 @@ def main():
     s = sub.add_parser("import-drafts"); s.add_argument("file"); s.add_argument("--account", default=None)
     s = sub.add_parser("job-leads"); s.add_argument("--limit", type=int, default=40)
     s = sub.add_parser("jobs"); s.add_argument("--full", action="store_true", help="scan every page, not just new ones")
-    sub.add_parser("report"); sub.add_parser("status"); sub.add_parser("daily"); sub.add_parser("team-sync")
+    sub.add_parser("report"); sub.add_parser("status"); sub.add_parser("daily")
+    s = sub.add_parser("team-sync"); s.add_argument("--take-over", action="store_true",
+                                                    help="this PC replaces the old PC registered under your name")
     s = sub.add_parser("team-join"); s.add_argument("name")
+    s = sub.add_parser("check"); s.add_argument("query", help="a profile / job link, @handle or email")
     s = sub.add_parser("finish"); s.add_argument("file", nargs="?", default=str(WORK / "drafts.json")); s.add_argument("--force", action="store_true")
     a = ap.parse_args()
     {"add-channels": cmd_add_channels, "discover": cmd_discover, "enrich": cmd_enrich, "to-draft": cmd_to_draft,
      "import-drafts": cmd_import_drafts, "jobs": cmd_jobs, "job-leads": cmd_job_leads, "report": cmd_report, "status": cmd_status,
      "daily": cmd_daily, "finish": cmd_finish,
-     "team-sync": lambda a: team.sync(db()), "team-join": lambda a: team.join(db(), a.name)}[a.cmd](a)
+     "team-sync": lambda a: team.sync(db(), take_over=a.take_over), "team-join": lambda a: team.join(db(), a.name),
+     "check": lambda a: print(json.dumps(team.check(db(), load_config(), a.query), indent=1))}[a.cmd](a)
 
 
 if __name__ == "__main__":

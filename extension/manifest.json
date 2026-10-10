@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Outreach Queue",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Daily client-outreach queue: drafted messages, safe caps, one click to open + copy. Never touches the social sites themselves.",
   "permissions": ["sidePanel", "storage", "clipboardWrite"],
   "host_permissions": ["http://127.0.0.1:8777/*"],

@@ -56,8 +56,16 @@ def main(export, *drafts):
             if len(fus) != m["followups_needed"]:
                 problems.append(f"{name}: {len(fus)} follow-ups, needs {m['followups_needed']}")
             for i, fu in enumerate(fus):
-                if len(fu) > 200:
-                    problems.append(f"{name}: follow-up {i + 1} is {len(fu)} chars > 200")
+                if len(fu) > (400 if m["platform"] == "email" else 200):
+                    problems.append(f"{name}: follow-up {i + 1} is {len(fu)} chars, too long")
+            if m["platform"] == "email":  # anti-spam rules: an honest subject, and the footer is added automatically
+                subj = (l.get("subject") or "").strip()
+                if not subj:
+                    problems.append(f"{name}: email needs a subject")
+                elif len(subj) > 70 or re.match(r"(?i)(re|fwd?)\s*:", subj) or subj.isupper() or "!" in subj:
+                    problems.append(f"{name}: subject must be honest and plain (<=70 chars, no RE:/FWD:, caps or !): {subj}")
+                if re.search(r"(?i)unsubscribe|opt[ -]?out|reply \W?no\W?", first):
+                    problems.append(f"{name}: leave the opt-out line out, the footer adds it")
             for t in [first] + fus:
                 low = t.lower()
                 if not m["links_allowed"] and URL.search(t):

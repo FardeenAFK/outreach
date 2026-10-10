@@ -46,3 +46,11 @@ editing jobs are mostly US-residency. Always check who can apply before spending
 
 ## Sign in once (in the Chrome profile you send from) so applying can be prepared for you
 YT Jobs, LinkedIn, Himalayas, Jobgether, and OnlineJobs.ph if eligible. Claude cannot log in or create accounts for you.
+
+## Added 2026-10-10: feeds scanned automatically (their terms allow it)
+Himalayas API (biggest: ~78 video-editor posts a week, with who can apply), Remote First Jobs API, Work With Indies RSS
+(game trailers / animators), Open Assignments RSS (documentary / news video, mostly US on-site: only remote kept),
+Bluesky "hiring" posts (read only), plus Remote OK (`tags=video`) and Jobicy (`tag=video editor`,
+`industry=design-multimedia`). Skipped after testing: Remotive and Working Nomads (0 video jobs), Mastodon (none),
+Authentic Jobs / Jobspresso (stale), Reddit (its Data API terms need an approved OAuth app: manual links instead),
+Motionographer / Behance / Jobgether / JustRemote (no feed, or bot walls).

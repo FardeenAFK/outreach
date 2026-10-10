@@ -5,6 +5,11 @@
   "profile": "WRITE_YOUR_PROFILE: what you edit (long-form YouTube, Shorts/Reels, ads...), the styles and niches you are good at, the software you actually have installed, and anything you can offer (fast turnaround, sound design...). Messages only ever claim what is written here.",
   "not_installed": [],
   "private_tools": [],
+  "email": {
+    "client": "gmail",
+    "address_line": "",
+    "optout_line": "Not interested? Just reply no and I won't email you again."
+  },
   "server_port": 8777,
   "accounts": {
     "me": {
@@ -13,7 +18,8 @@
         "x": 30,
         "instagram": 20,
         "linkedin": 15,
-        "facebook": 10
+        "facebook": 10,
+        "email": 0
       }
     }
   },
@@ -31,16 +37,21 @@
       5
     ],
     "instagram": [],
-    "facebook": []
+    "facebook": [],
+    "email": [
+      5
+    ]
   },
   "platform_preference": [
     "x",
     "instagram",
     "linkedin",
-    "facebook"
+    "facebook",
+    "email"
   ],
   "fallback_platforms": [
-    "facebook"
+    "facebook",
+    "email"
   ],
   "filters": {
     "min_subs": 10000,
@@ -142,7 +153,9 @@
     ],
     "max_age_days": 45,
     "max_pages": 12,
-    "dm_min_fit": 45
+    "dm_min_fit": 45,
+    "country": "",
+    "search_keyword": "video editor"
   },
   "daily": {
     "new_leads_to_enrich": 120,

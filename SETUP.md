@@ -40,21 +40,26 @@ If `%USERPROFILE%\Documents\Outreach` existed before this clone (an older zip in
    - Their editing skills, styles and niches, in their own words, and the software they actually have installed.
    - Editing software they do NOT have that clients often ask for (Premiere Pro, DaVinci Resolve, CapCut, Final Cut).
    - Any software they built themselves that must stay private (messages will never mention it).
-   - Are they based in the US? (Default: no. Jobs that require US residence get skipped.)
+   - Which country they live in (job feeds skip posts that aren't open to it), and are they based in the US?
+     (Default: no. Jobs that require US residence get skipped.)
    - Roughly how old their Instagram, X and LinkedIn accounts are, and whether to use Facebook at all.
+   - Do they want the optional email lane? Only if yes: the postal address line (city + street or PO box) that
+     anti-spam law requires in every cold email. Otherwise email stays off.
 
 4. **Write config.json.** First install: copy `config.example.json` to `config.json`. Fill in `sender_name` and
    `accounts.me.label` (their name), `profile` (their skills in their own words, nothing they didn't say),
-   `not_installed` and `private_tools` (lists of names), `us_based`, and `ramp.start_date` = today (YYYY-MM-DD).
-   Set `filters.niches` to 8-12 YouTube search phrases for their niches if they differ from the defaults.
+   `not_installed` and `private_tools` (lists of names), `us_based`, `jobs.country`, and `ramp.start_date` = today
+   (YYYY-MM-DD). Set `filters.niches` to 8-12 YouTube search phrases for their niches if they differ from the defaults.
    Caps: keep the defaults for accounts older than a year (X 30, Instagram 20, LinkedIn 15, Facebook 10). For
    accounts younger than about 6 months use X 15, Instagram 8, LinkedIn 8, Facebook 5. No Facebook: cap 0.
+   Email lane wanted: set `email.address_line` and `accounts.me.caps.email` to 5 (never above 10). Otherwise leave 0.
    If config.json already existed (update or migration), keep it and only add missing keys from the example.
 
 5. **Join the team.** New member: `python engine.py team-join <team name>`. Migrated install whose name is already in
    the list: `python engine.py team-sync`. Either way the output must list the members and say
-   `this PC is '<name>'`. If it prints a WARNING that the name is not in the list, fix that before going on, or this
-   PC drafts nothing.
+   `this PC is '<name>'`. If it prints a WARNING or a CONFLICT, fix that before going on: until then this PC drafts
+   nothing (on purpose, so it can never pitch a teammate's clients). A CONFLICT means another PC already uses that
+   name: pick another name with team-join, or, if it is truly the same person on a new PC, `team-sync --take-over`.
 
 6. **Start the local server and make it start at login.** In PowerShell:
    ```
@@ -94,7 +99,9 @@ If `%USERPROFILE%\Documents\Outreach` existed before this clone (an older zip in
 10. **Tell them how to use it,** in 5 lines: open http://127.0.0.1:8777/ → Today → **Open profile + copy** → paste
     in the DM box → Enter → **Sent ✓ → next**. LinkedIn: connect with NO note first, then mark "Accepted" in the
     Replies tab when they accept. When someone replies, click **Replied** (that stops follow-ups). Stop for the day
-    if a platform shows "action blocked" or "try again later".
+    if a platform shows "action blocked" or "try again later". Before messaging anyone by hand (an X post, a Reddit
+    job), paste the link into **Team → Check a link**; log hand-made applications under **Jobs → Tracker**.
+    Press `?` in the queue for keyboard shortcuts.
 
 ## Accounts (tell them once)
 They run this on THEIR OWN Claude account. Sharing code is fine; sharing a Claude login, token or account between

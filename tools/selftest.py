@@ -2,7 +2,7 @@
 with an in-process server on a spare port, so real data is never touched.
     python tools/selftest.py
 """
-import json, os, shutil, sqlite3, sys, tempfile, threading, urllib.request, urllib.error
+import argparse, json, os, shutil, sqlite3, sys, tempfile, threading, urllib.parse, urllib.request, urllib.error
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
@@ -126,8 +126,52 @@ team.CLAIMS_CACHE, real_cache = tmp / "team-claims.json", team.CLAIMS_CACHE
 team.CLAIMS_CACHE.write_text(json.dumps({"friend": [team.claim_key("UCtaken")], "farde": [team.claim_key("UCmine")]}))
 tk = team.Taken(cfg_t)
 check("teammates' claims are taken, my own are not", "UCtaken" in tk and "UCmine" not in tk and "UCfree" not in tk)
+# a teammate's claim on a social profile catches the same person under a different channel/job id
+team.CLAIMS_CACHE.write_text(json.dumps({"friend": sorted(team.keys_for("https://twitter.com/SameGuy?s=20"))}))
+tk = team.Taken(cfg_t)
+check("same person under another id is caught by their profile",
+      tk.who("UCother", "https://x.com/sameguy/") == "friend" and tk.who("@sameguy") == "friend" and not tk.who("https://x.com/other"))
 team.CLAIMS_CACHE = real_cache
-check("solo install owns everything", team.owner(team.members({"team": {"me": "solo"}}), "UCx") == "solo")
+nl = team.norm_link
+check("job links keep what identifies the post",
+      nl("https://www.indeed.com/viewjob?jk=a1&from=serp") == nl("indeed.com/viewjob?jk=a1") != nl("https://indeed.com/viewjob?jk=b2")
+      and nl("https://m.me/joe") == nl("https://facebook.com/joe") and nl("https://youtu.be/Ab1") == nl("https://youtube.com/watch?v=Ab1&si=q"))
+check("solo install owns everything",
+      team.owner(team.members({"team": {"me": "solo", "solo": True}}), "UCx") == "solo" and team.ready({"team": {"me": "solo", "solo": True}})[0])
+check("a fresh install with no team list drafts nothing", not team.ready({"team": {"me": "newbie"}})[0]
+      and not team.ready({"team": {"me": "newbie", "members": two}})[0])
+
+# to-draft refuses (and says why) instead of guessing the split; writes to a temp work dir, never the real one
+real_work, engine.WORK = engine.WORK, tmp
+cfg_live = core.load_config()
+blocked = dict(cfg_live, team={"me": "newbie"})
+core.save_config(blocked)
+engine.cmd_to_draft(argparse.Namespace(limit=None, account="me"))
+exp = json.loads((tmp / "leads_to_draft.json").read_text(encoding="utf-8"))
+check("to-draft blocked without a team list", exp.get("blocked") and exp["leads"] == [], exp.get("blocked"))
+core.save_config(cfg_live)
+engine.WORK = real_work
+
+# application tracker: logged once, a second spelling of the same post is refused as "mine"
+s1 = call("/api/applications", {"action": "add", "url": "https://www.indeed.com/viewjob?jk=selftest1", "title": "t"})
+s2 = call("/api/applications", {"action": "add", "url": "indeed.com/viewjob?jk=selftest1&utm_source=x", "title": "t"})
+s3 = call("/api/check?q=" + urllib.parse.quote("https://indeed.com/viewjob?jk=selftest1"))
+check("tracker logs, refuses a duplicate, and Check knows it", s1[0] == 200 and s2[0] == 409 and s3[1].get("status") == "mine", (s1, s2, s3))
+evil = dict(H, Origin="https://evil.example")
+check("new endpoints refuse other websites", call("/api/applications", {"action": "add", "url": "x"}, headers=evil)[0] == 403
+      and call("/api/team/sync", {}, headers=evil)[0] == 403)
+r = call("/api/config", {"account": "me", "caps": {"email": 5}, "email": {"address_line": ""}})
+check("email stays off without a postal address", core.load_config()["accounts"]["me"]["caps"]["email"] == 0 and r[1].get("notes"), r)
+r = call("/api/config", {"account": "me", "caps": {"email": 99}, "email": {"address_line": "PO Box 1, Dhaka", "optout_line": "Reply no to stop."}})
+q = None
+if core.load_config()["accounts"]["me"]["caps"]["email"] == 15:
+    con.execute("INSERT OR REPLACE INTO leads(id, name, url, email, status, links) VALUES ('UCmailtest','Mail Test','https://youtube.com/channel/UCmailtest','a@b.co','queued','{}')")
+    con.execute("INSERT INTO messages(lead_id, account, platform, profile_url, step, body, status, due_date, subject) "
+                "VALUES ('UCmailtest','me','email','mailto:a@b.co',0,'hello','queued',?, 'Quick idea for your intro')", (core.today(),))
+    con.commit()
+    q = call("/api/queue?account=me")[1]["email"]["items"]
+check("email cap clamps to 15 and the queue carries subject + legal footer",
+      q and q[0]["subject"] == "Quick idea for your intro" and "PO Box 1, Dhaka" in q[0]["footer"] and "Reply no" in q[0]["footer"], q)
 
 srv.shutdown()
 ok = sum(r[0] for r in results)

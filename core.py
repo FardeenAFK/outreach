@@ -13,10 +13,10 @@ REPORTS = ROOT / "reports"
 WORK.mkdir(exist_ok=True)
 REPORTS.mkdir(exist_ok=True)
 
-PLATFORMS = ("x", "instagram", "linkedin", "facebook")
+PLATFORMS = ("x", "instagram", "linkedin", "facebook", "email")
 # Hard daily ceilings from the 2026-09-27 research (aged accounts, every message unique).
-# The settings UI cannot go above these.
-MAX_CAPS = {"x": 40, "instagram": 30, "linkedin": 15, "facebook": 20}
+# The settings UI cannot go above these. Email = hand-sent from your own mailbox, so it stays low.
+MAX_CAPS = {"x": 40, "instagram": 30, "linkedin": 15, "facebook": 20, "email": 15}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS leads (
@@ -81,6 +81,19 @@ CREATE TABLE IF NOT EXISTS events (
     lead_id TEXT,
     detail TEXT
 );
+CREATE TABLE IF NOT EXISTS applications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,  -- jobs applied to by hand (Indeed, Upwork, LinkedIn...) or from a proposal
+    board TEXT,
+    title TEXT,
+    company TEXT,
+    url TEXT,
+    job_id TEXT,                    -- set when it came from a drafted proposal
+    status TEXT DEFAULT 'applied',  -- applied|interview|won|lost|ghosted
+    notes TEXT,
+    followup_due TEXT,
+    created TEXT,
+    updated TEXT
+);
 CREATE INDEX IF NOT EXISTS ix_msg_status ON messages(status, account, platform);
 CREATE INDEX IF NOT EXISTS ix_ev_day ON events(day, type);
 """
@@ -118,6 +131,8 @@ def db():
         con.execute("ALTER TABLE leads ADD COLUMN job_id TEXT")
     if "dm_checked" not in {r[1] for r in con.execute("PRAGMA table_info(jobs)")}:  # migration: last no-socials check
         con.execute("ALTER TABLE jobs ADD COLUMN dm_checked TEXT")
+    if "subject" not in {r[1] for r in con.execute("PRAGMA table_info(messages)")}:  # migration: email subject lines
+        con.execute("ALTER TABLE messages ADD COLUMN subject TEXT")
     return con
 
 

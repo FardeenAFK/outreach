@@ -22,15 +22,21 @@ Optional, only if the NexLev MCP has quota left: `search_niche_finder_channels` 
 Read `work/leads_to_draft.json` and `work/jobs_to_draft.json`. Write `work/drafts.json`:
 ```json
 {"account": "me",
- "leads": [{"id": "UC...", "first": "...", "followups": ["...", "..."]}],
+ "leads": [{"id": "UC...", "first": "...", "followups": ["...", "..."]},
+           {"id": "UC...", "subject": "...", "first": "...", "followups": ["..."]}],
  "skip_leads": ["UC..."],
  "jobs": [{"id": "ytjobs:123", "proposal": "..."}],
  "skip_jobs": ["ytjobs:456"]}
 ```
+(`subject` only for leads whose `platform` is `email`.)
 Then run ONE command: `python engine.py finish work/drafts.json`. It checks every draft (length, links,
 duplicated phrases, experience claims, placeholders), imports only if everything passes, and writes the report.
 If it prints problems, fix them in drafts.json and run `finish` again. If there are more than 30 leads, you may draft
 them in parallel batches with subagents (give each one these rules), then merge the results into work/drafts.json.
+
+**If `leads_to_draft.json` has a `blocked` reason, draft nothing and put that reason first in the report.** It means
+this PC doesn't know the team split yet (or another PC uses the same team name), and drafting could pitch a
+teammate's clients.
 
 ### Who is writing
 The person in `sender_name` in `leads_to_draft.json`, with the skills in `sender_profile` (both come from `config.json`).
@@ -87,6 +93,14 @@ adds something new (a different video of theirs, a timing reason), and the last 
 
 ### LinkedIn
 `first` is the DM they get after accepting a no-note connection request. Same rules, can be slightly longer.
+
+### Email (`platform: "email"`, only when the sender switched email on)
+These people publish a business email and no DM-able profile. The sender sends each one by hand from their own mailbox.
+- `subject`: plain and honest, under 60 characters, about THEM ("Free re-edit of your F-111 video's opening").
+  Never "Re:"/"Fwd:", all caps, "!", or anything that pretends you already talked.
+- `first`: 60-130 words, same rules as a DM (two concrete details, the offer, one easy question). Sign as `sender_name`.
+  One link at most. Do NOT write an unsubscribe/opt-out line or an address: the queue adds the sender's footer.
+- One follow-up (under 400 characters) that adds something new and closes politely.
 
 ### Skip a lead when
 It is a company or brand channel (airlines, media outlets, big studios), a news channel, clearly run by a
