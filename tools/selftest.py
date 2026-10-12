@@ -173,6 +173,66 @@ if core.load_config()["accounts"]["me"]["caps"]["email"] == 15:
 check("email cap clamps to 15 and the queue carries subject + legal footer",
       q and q[0]["subject"] == "Quick idea for your intro" and "PO Box 1, Dhaka" in q[0]["footer"] and "Reply no" in q[0]["footer"], q)
 
+# job-alert emails: tracked links decoded, non-editing jobs dropped, one job per post
+import inbox  # noqa: E402
+inbox.SECRET = tmp / "inbox-secret.json"  # never touch the real login
+tracked = "https://cts.indeed.com/v3/x?url=" + urllib.parse.quote("https://www.indeed.com/viewjob?jk=9f8e7d6c5b4a3f2e&from=ja", safe="")
+mail = (f'<a href="https://www.indeed.com/rc/clk/dl?jk=1a2b3c4d5e6f7a8b&from=ja">YouTube Video Editor</a><p>Creator Co</p>'
+        f'<p>Motion Graphics Designer</p><a href="{tracked}">View job</a>'
+        f'<a href="https://www.indeed.com/viewjob?jk=0000000000000001">Senior Accountant</a>'
+        f'<a href="https://www.indeed.com/viewjob?jk=1a2b3c4d5e6f7a8b">YouTube Video Editor</a>')
+got = inbox.parse_alert("Indeed", "s", mail)
+check("alert emails become jobs (tracking decoded, accountant dropped, no duplicates)",
+      [(j["key"], j["title"]) for j in got] == [("indeed:1a2b3c4d5e6f7a8b", "YouTube Video Editor"),
+                                                 ("indeed:9f8e7d6c5b4a3f2e", "Motion Graphics Designer")], got)
+up = inbox.parse_alert("Upwork", "s", '<a href="https://email.upwork.com/c?u=' +
+                       urllib.parse.quote("https://www.upwork.com/jobs/~021234567890abcdef12", safe="") + '">Need a YouTube editor</a>')
+check("Upwork and LinkedIn alert links resolve to the post", up and up[0]["url"] == "https://www.upwork.com/jobs/~021234567890abcdef12"
+      and inbox.job_key("LinkedIn", "https://www.linkedin.com/comm/jobs/view/4123456789/?trk=x")[0] == "linkedin:4123456789", up)
+import base64, gzip  # noqa: E402
+cts = lambda u, kind: "https://cts.indeed.com/v3/" + base64.urlsafe_b64encode(
+    gzip.compress(json.dumps({"u": u, "m": {"clickType": kind}}).encode())).decode().rstrip("=")
+got = inbox.parse_alert("Indeed", "s", f'<a href="{cts("https://pk.indeed.com/rc/clk?jk=abcdef0123456789&tk=SECRETTOKEN", "viewjob")}">Video Editor</a>'
+                                       f'<a href="{cts("https://www.indeed.com/feedback?jk=1111111111111111", "feedback")}">Video feedback</a>')
+check("Indeed cts.indeed.com links decoded offline; feedback links and personal tokens dropped",
+      [j["url"] for j in got] == ["https://www.indeed.com/viewjob?jk=abcdef0123456789"] and "SECRETTOKEN" not in json.dumps(got), got)
+pb = engine.pay_boost
+check("best-paid jobs rank first, $30 shorts edits sink",
+      pb("$500-1000") > pb("$150-250") > pb("$50-100") > pb("$30-75") and pb("$25 - $35 an hour") >= 12 and pb("$10", "per hour") < 0
+      and pb("USD50000-80000/annual") == 20 and pb("unlisted") == 0
+      and pb("PHP70000-90000/monthly") < pb("USD3000-4000/monthly") and pb("USD150-175/weekly") < 0 and pb("GBP 115/day") > 0)
+r1 = call("/api/inbox", {"action": "save", "user": "tester@gmail.com", "password": "abcd efgh ijkl mnop"})
+src = call("/api/sources")[1]
+raw = inbox.SECRET.read_text() if inbox.SECRET.exists() else ""
+check("mailbox password is encrypted, outside the folder, and never sent back",
+      r1[0] == 200 and "abcdefghijklmnop" not in raw and "abcdefghijklmnop" not in json.dumps(src)
+      and src["inbox"]["configured"] and inbox.load_login(True)["password"] == "abcdefghijklmnop", (r1, src.get("inbox")))
+check("other websites can't touch the mailbox login",
+      call("/api/inbox", {"action": "save", "user": "x@y.z", "password": "p"}, headers=evil)[0] == 403)
+inbox.forget_login()
+
+# low-DM mode: social DMs only for people who posted they're hiring; cold channels wait
+real_work, engine.WORK = engine.WORK, tmp
+cfg_w = core.load_config()
+mine_ids = [i for i in (f"UCwarmtest{n:03d}" for n in range(200)) if engine.lead_owner(cfg_w, i) == team.me(cfg_w)][:2]
+for lid, job in zip(mine_ids, ("ytjobs:selftest", None)):
+    con.execute("DELETE FROM leads WHERE id=?", (lid,))
+    con.execute("INSERT INTO leads(id, name, url, links, status, score, job_id, signals, videos) VALUES (?,?,?,?,?,?,?,?,?)",
+                (lid, lid, f"https://youtube.com/channel/{lid}", json.dumps({"x": f"https://x.com/{lid.lower()}"}),
+                 "enriched", 999, job, "[]", "[]"))
+con.commit()
+core.save_config(dict(cfg_w, dm_mode="warm"))
+engine.cmd_to_draft(argparse.Namespace(limit=200, account="me"))
+exp = {l["id"] for l in json.loads((tmp / "leads_to_draft.json").read_text(encoding="utf-8"))["leads"]}
+check("low-DM mode drafts the hiring poster, not the cold channel", mine_ids[0] in exp and mine_ids[1] not in exp, (mine_ids, exp))
+core.save_config(cfg_w)
+engine.WORK = real_work
+r = call("/api/config", {"apply_kit": [{"label": "Rate", "text": "$50/video"}, {"label": "", "text": "x"}, "junk", {"label": "L" * 99, "text": "t"}],
+                         "dm_mode": "nonsense"})
+kit = core.load_config().get("apply_kit")
+check("apply kit keeps only real answers; bad modes are ignored",
+      kit == [{"label": "Rate", "text": "$50/video"}, {"label": "L" * 40, "text": "t"}] and core.load_config().get("dm_mode") == cfg_w.get("dm_mode"), kit)
+
 srv.shutdown()
 ok = sum(r[0] for r in results)
 for passed, name, detail in results:

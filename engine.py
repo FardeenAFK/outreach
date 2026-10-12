@@ -14,8 +14,11 @@
     python engine.py team-sync [--take-over]   # fetch teammates + their claimed leads, publish mine (daily/finish do it too)
     python engine.py team-join NAME            # add NAME to the team on GitHub and make this PC that person
     python engine.py check URL_OR_HANDLE       # before messaging anyone by hand: free, mine, or a teammate's?
+    python engine.py inbox [--days 3] [--dry-run]  # job-alert emails (Indeed, LinkedIn, Upwork...) -> jobs to apply to
 """
 import argparse
+import hashlib
+import html
 import json
 import random
 import re
@@ -505,12 +508,19 @@ def cmd_to_draft(args):
             con.execute("UPDATE leads SET status='filtered', note='same person as a lead you already messaged', updated=? "
                         "WHERE id=?", (now(), r["id"]))
     con.commit()
-    rows = con.execute("SELECT * FROM leads WHERE status='enriched' ORDER BY score DESC LIMIT ?", (limit,)).fetchall()
+    # Low-DM mode: social DMs only to people who publicly posted that they're hiring (warm, rarely reported).
+    # Cold channels can still get an email if the email lane is on; otherwise they wait.
+    warm = cfg.get("dm_mode", "all") == "warm"
+    where = "status='enriched'" + ((" AND (job_id IS NOT NULL" + (" OR (email IS NOT NULL AND email != '')" if email_on else "")
+                                    + ")") if warm else "")
+    rows = con.execute(f"SELECT * FROM leads WHERE {where} ORDER BY job_id IS NULL, score DESC LIMIT ?", (limit,)).fetchall()
     out = []
     for r in rows:
         links = json.loads(r["links"] or "{}")
         if email_on and r["email"]:
             links["email"] = "mailto:" + r["email"].strip()
+        if warm and not r["job_id"]:
+            links = {"email": links["email"]} if "email" in links else {}
         plat = pick_platform(con, cfg, links, account)
         if not plat:
             continue
@@ -659,7 +669,15 @@ def cmd_jobs(args):
                 continue
             comp = it.get("company") or {}
             lo, hi = det.get("minSalary"), det.get("maxSalary")
+            per = {1: "video", 3: "year", 5: "hour"}.get(det.get("jobType") or it.get("jobType"))  # YT Jobs pay period
             pay = f"${lo}-{hi}" if lo and hi else (f"${lo or hi}" if (lo or hi) else "unlisted")
+            if pay != "unlisted" and per:
+                pay += {"video": "/project", "year": "/yr", "hour": "/hr"}[per]
+            loc = det.get("locationDetails") or it.get("locationDetails")
+            if isinstance(loc, dict) and loc.get("countryName") and jc.get("worldwide_only", True):
+                ignore(jid, title, f"locked to {loc.get('countryName')}")  # international, open-to-anyone roles only
+                continue
+            agency = comp.get("type") == 1  # a company or agency, not a creator's own channel
             text = html_text(det.get("htmlContent") or det.get("description") or "")
             cats = ", ".join(c["name"] for c in (it.get("categories") or []) + (it.get("styles") or []))
             # Score on title + body only: many posts tick every category, which says nothing.
@@ -669,13 +687,20 @@ def cmd_jobs(args):
             fit += 12 if any(k in tl for k in ("documentary", "faceless", "true crime", "motion", "animat")) else 0
             fit += 8 if any(k in blob for k in ("after effects", "geolayers", "motion graphics", "animation")) else 0
             fit += 8 if pay != "unlisted" else 0
+            boost = pay_boost(pay, text[:600], per)
+            if boost <= -15 and jc.get("skip_low_pay", True):
+                ignore(jid, title, f"low pay ({pay})")  # e.g. $30 for a shorts edit: not worth a proposal
+                continue
+            fit += boost  # best-paid jobs get drafted first
             fit += 6 if re.search(r"\b(ai|elevenlabs|ai voice|ai-generated)\b", blob) else 0
+            fit += 6 if agency else 0  # agencies hire again and again: steady work
             fit -= 15 if re.search(r"\b(on[- ]camera|shoot days|relocate|in[- ]person|on[- ]site)\b", blob) else 0
             con.execute("""INSERT INTO jobs(id, board, title, company, channel_url, subs, pay, url, posted, text, fit, status, created, updated)
                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (jid, "YT Jobs", title, comp.get("name"), comp.get("ytLink"),
                          parse_count(str(comp.get("abvSubscribers") or "")), pay, f"https://ytjobs.co/job/{it['id']}",
-                         posted, (f"[{cats}]\n" if cats else "") + text[:3000], min(fit, 100), "new", now(), now()))
+                         posted, ("[agency] " if agency else "") + (f"[{cats}]\n" if cats else "") + text[:3000],
+                         min(fit, 100), "new", now(), now()))
             new += 1
             time.sleep(random.uniform(0.4, 1.0))
         con.commit()
@@ -689,7 +714,8 @@ def cmd_jobs(args):
             continue
         con.execute("""INSERT INTO jobs(id, board, title, company, pay, url, posted, text, fit, status, created, updated)
                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (key, board, title, company, pay, url, posted, text[:3000], 50 if board == "Bluesky" else 60, "new", now(), now()))
+                    (key, board, title, company, pay, url, posted, text[:3000],
+                     (50 if board == "Bluesky" else 60) + pay_boost(pay, text[:600]), "new", now(), now()))
         extra += 1
     con.commit()
     print(f"other boards: {extra} new editing jobs")
@@ -893,14 +919,57 @@ def cmd_job_leads(args):
 # Other boards, ONLY through feeds/APIs their owners publish for automated reading (checked 2026-10-10:
 # terms, limits, attribution). Each is called once per morning run and the panel links back to the source.
 # Sites that ban bots (Indeed, Upwork, LinkedIn, Freelancer, Reddit, Fiverr...) are manual links in the Jobs tab.
-JOB_SOURCES = ["Himalayas", "Remote First Jobs", "Remote OK", "Jobicy", "Work With Indies", "Open Assignments",
-               "Dribbble", "We Work Remotely", "Bluesky hiring posts"]  # Bluesky last: originals win over repost bots
+JOB_SOURCES = ["Agency hiring pages", "RemoteJobs.org", "Himalayas", "Remote First Jobs", "Remote OK", "Jobicy",
+               "Work With Indies", "Open Assignments", "Podnews jobs", "Dribbble", "We Work Remotely",
+               "Bluesky hiring posts"]  # Bluesky last: originals win over repost bots
 BOARD_TITLE = re.compile(r"video[ -]?edit|motion (design|graphic)|youtube|video (creator|producer|content)|post[- ]production|"
                          r"trailer editor|short[- ]?form|preditor|\banimator\b|2d anim|after effects|reels? editor|"
                          r"tiktok editor|content editor|video specialist|videographer[ /&]+editor", re.I)
 BOARD_SKIP = re.compile(r"interpreter|engineer|manager|copy[ -]?editor|editor[- ]in[- ]chief|news editor|managing editor|"
                         r"features editor|photo editor|writer|developer|3d (character )?rigger", re.I)
 HIRING_POST = re.compile(r"#hiring|\[hiring\]|\bis hiring\b|^\W*hiring\b|\bwe'?re hiring\b|\bapply\b|\bjob:", re.I | re.M)
+
+
+def pay_boost(pay, text="", per=None):
+    """How well a job pays, as a fit bonus (+20 best .. -15 poor), so the best-paid jobs are drafted first.
+    The period comes from the board when it says (YT Jobs jobType, "/hr", "/project"), otherwise from the text,
+    otherwise it is guessed from the size."""
+    nums = [float(n.replace(",", "")) for n in re.findall(r"\d[\d,]*(?:\.\d+)?", pay or "")]
+    nums = [n for n in nums if n >= 5]
+    if not nums:
+        return 0
+    lo, hi = min(nums), max(nums)
+    v = lo * 2 if hi > 20 * lo else (lo + hi) / 2  # "$500-100000" style ranges say nothing about the top
+    cur = re.search(r"(?<![A-Z])(EUR|GBP|PHP|INR|CAD|AUD|NZD|SGD|MXN|BRL|PKR|NGN|ZAR)(?![A-Z])|[€£₱₹]", (pay or "").upper())
+    if cur:  # rough USD value: a peso salary is not a dollar salary
+        v *= {"EUR": 1.08, "€": 1.08, "GBP": 1.27, "£": 1.27, "PHP": 0.017, "₱": 0.017, "INR": 0.012, "₹": 0.012,
+              "CAD": 0.73, "AUD": 0.66, "NZD": 0.6, "SGD": 0.74, "MXN": 0.055, "BRL": 0.19, "PKR": 0.0036,
+              "NGN": 0.00065, "ZAR": 0.055}.get(cur.group(0), 1)
+    t = f"{pay} {text}".lower()
+    if not per and re.search(r"/ ?(wk|week)|weekly|per week", t):
+        v, per = v * 4.3, "month"  # weekly pay compared as monthly
+    elif not per and re.search(r"/ ?day\b|per day|daily rate|day rate", t):
+        v, per = v * 21.5, "month"
+    if per:
+        pass
+    elif re.search(r"/ ?(project|video)\b|per (project|video)", t):
+        per = "video"
+    elif re.search(r"/ ?(hr|hour)|per hour|hourly|an hour", t):
+        per = "hour"
+    elif re.search(r"/ ?(mo|month)|per month|monthly", t):
+        per = "month"
+    elif re.search(r"/ ?(yr|year|annual)|per year|annual|salary|/annum", t) or v >= 10000:
+        per = "year"
+    elif v >= 1200:
+        per = "month"
+    else:
+        per = "video"
+    bands = {"hour": [(30, 20), (20, 12), (12, 0)], "month": [(2500, 20), (1500, 12), (800, 0)],
+             "year": [(30000, 20), (18000, 12), (9000, 0)], "video": [(500, 18), (250, 10), (100, 2), (60, -5)]}
+    for floor, score in bands[per]:
+        if v >= floor:
+            return score
+    return -15
 
 
 def _rss(board, url, text=True):
@@ -919,14 +988,13 @@ def _rss(board, url, text=True):
 
 def _himalayas(cfg):
     """Himalayas public API (attribution + link back). locationRestrictions = who may apply; empty = worldwide."""
-    out, mine = [], ((cfg.get("jobs") or {}).get("country") or "").strip().lower()
+    out = []
     for q, pages in (("video editor", 3), ("motion designer", 1)):
         for page in range(1, pages + 1):
-            data = get(f"https://himalayas.app/jobs/api/search?q={urllib.parse.quote(q)}&sort=recent&page={page}", as_json=True)
+            ww = "&worldwide=true" if (cfg.get("jobs") or {}).get("worldwide_only", True) else ""
+            data = get(f"https://himalayas.app/jobs/api/search?q={urllib.parse.quote(q)}&sort=recent&page={page}{ww}", as_json=True)
             for j in data.get("jobs") or []:
                 where = j.get("locationRestrictions") or []
-                if mine and where and mine not in [w.lower() for w in where]:
-                    continue  # not open to the sender's country
                 pay = (f"{j.get('currency') or '$'}{j['minSalary']}-{j.get('maxSalary') or ''}/{j.get('salaryPeriod') or ''}"
                        if j.get("minSalary") else "unlisted")
                 text = ("Open to: " + (", ".join(where) if where else "worldwide") + "\n" +
@@ -974,9 +1042,102 @@ def _remote_first():
     return out
 
 
+WORLDWIDE = re.compile(r"anywhere|worldwide|global|international|\bremote\b(?!.*\b(us|usa|u\.s\.|united states|uk|canada|"
+                       r"latam|latin america|europe|eu)\b)", re.I)
+COUNTRY_LOCK = re.compile(r"\b(us|usa|u\.s\.|united states|uk|united kingdom|canada|latam|latin america|eu|europe|"
+                          r"germany|australia|india|philippines|mexico|brazil)\b(?! and)", re.I)
+
+
+def _open_to(location):
+    """'Open to: worldwide' or 'Open to: <where>' from a free-text location, for the worldwide-only filter."""
+    loc = (location or "").strip()
+    if not loc or (WORLDWIDE.search(loc) and not COUNTRY_LOCK.search(loc)):
+        return "Open to: worldwide"
+    return f"Open to: {loc}"
+
+
+def _pay(lo, hi, period=None, currency="USD"):
+    if not (lo or hi):
+        return "unlisted"
+    sym = "$" if (currency or "USD").upper() == "USD" else (currency or "").upper() + " "
+    rng = f"{sym}{int(lo)}-{int(hi)}" if lo and hi else f"{sym}{int(lo or hi)}"
+    unit = {"hour": "/hr", "hourly": "/hr", "year": "/yr", "yearly": "/yr", "annual": "/yr", "month": "/mo", "monthly": "/mo",
+            "week": "/wk", "project": "/project", "day": "/day"}.get((period or "").lower(), "")
+    return rng + unit
+
+
+def _remotejobs_org():
+    """RemoteJobs.org public API (no key; link back to the job, keep its apply link intact; < 200 calls/hour)."""
+    out = []
+    for q in ("video editor", "motion designer"):
+        data = get("https://remotejobs.org/api/v1/jobs?limit=50&q=" + urllib.parse.quote(q), as_json=True)
+        for j in data.get("data") or []:
+            comp = j.get("company") or {}
+            per = j.get("salary_period")
+            if per == "week" and j.get("salary_min"):  # weekly pay: compare it as monthly
+                lo, hi, per = (j.get("salary_min") or 0) * 4.3, (j.get("salary_max") or 0) * 4.3, "month"
+            else:
+                lo, hi = j.get("salary_min"), j.get("salary_max")
+            out.append(("RemoteJobs.org", j.get("id"), j.get("title"), comp.get("name"), j.get("url") or j.get("apply_url"),
+                        (j.get("posted_at") or "")[:10], _open_to(j.get("location")) + "\n" + html_text(j.get("description") or "")[:2500],
+                        _pay(lo, hi, per, j.get("salary_currency"))))
+        time.sleep(1.0)
+    return out
+
+
+def _ats(cfg):
+    """Agencies' own hiring pages on Greenhouse / Lever / Ashby. All three publish a public job-board API for exactly
+    this ("Job Board data is publicly available"). The watch-list is config.json -> jobs.ats_boards."""
+    out = []
+    for b in (cfg.get("jobs") or {}).get("ats_boards") or []:
+        kind, board, name = b.get("ats"), b.get("board"), b.get("name") or b.get("board")
+        try:
+            if kind == "greenhouse":
+                for j in get(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true", as_json=True).get("jobs", []):
+                    out.append((f"{name} (agency)", f"gh{j['id']}", j.get("title"), name, j.get("absolute_url"),
+                                (j.get("first_published") or j.get("updated_at") or "")[:10],
+                                _open_to((j.get("location") or {}).get("name")) + "\n" + html_text(html.unescape(j.get("content") or ""))[:2500],
+                                "unlisted"))
+            elif kind == "lever":
+                for j in get(f"https://api.lever.co/v0/postings/{board}?mode=json", as_json=True):
+                    cat = j.get("categories") or {}
+                    when = dt.datetime.fromtimestamp((j.get("createdAt") or 0) / 1000).date().isoformat() if j.get("createdAt") else ""
+                    out.append((f"{name} (agency)", f"lv{j['id']}", j.get("text"), name, j.get("hostedUrl"), when,
+                                _open_to(cat.get("location") or j.get("country")) + "\n" + (j.get("descriptionPlain") or "")[:2500],
+                                "unlisted"))
+            elif kind == "ashby":
+                data = get(f"https://api.ashbyhq.com/posting-api/job-board/{board}?includeCompensation=true", as_json=True)
+                for j in data.get("jobs") or []:
+                    comp = ((j.get("compensation") or {}).get("compensationTierSummary") or "")
+                    out.append((f"{name} (agency)", f"as{j['id']}", j.get("title"), name, j.get("jobUrl"),
+                                (j.get("publishedAt") or "")[:10],
+                                _open_to(j.get("location")) + "\n" + (j.get("descriptionPlain") or "")[:2500], comp or "unlisted"))
+            elif kind == "recruitee":  # Recruitee Careers Site API: https://<careers domain>/api/offers/
+                host = board if "." in board else f"{board}.recruitee.com"
+                for j in get(f"https://{host}/api/offers/", as_json=True).get("offers", []):
+                    where = "worldwide" if j.get("remote") and not j.get("country") else ", ".join(
+                        x for x in (j.get("city"), j.get("country")) if x) or j.get("location")
+                    out.append((f"{name} (agency)", f"rc{j['id']}", j.get("title"), name, j.get("careers_url"),
+                                (j.get("created_at") or "")[:10], _open_to(where) + "\n" + html_text(j.get("description") or "")[:2500],
+                                "unlisted"))
+            elif kind == "teamtailor":  # Teamtailor publishes an RSS feed of open jobs: https://<company>.teamtailor.com/jobs.rss
+                host = board if "." in board else f"{board}.teamtailor.com"
+                for r in _rss(f"{name} (agency)", f"https://{host}/jobs.rss"):
+                    out.append((r[0], "tt" + hashlib.sha1((r[1] or r[4] or "").encode()).hexdigest()[:12], r[2], name, r[4], r[5],
+                                _open_to("") + "\n" + (r[6] or "")[:2500] if re.search(r"remote|anywhere|worldwide", r[6] or "", re.I)
+                                else "Open to: see post\n" + (r[6] or "")[:2500], "unlisted"))
+        except Exception as e:  # one dead board must not stop the others
+            print(f"  {name} ({kind}) failed: {type(e).__name__}: {str(e)[:80]}")
+        time.sleep(0.5)
+    return out
+
+
 def fetch_other_boards(cfg):
     on = {name: True for name in JOB_SOURCES} | ((cfg.get("jobs") or {}).get("sources") or {})
     calls = {
+        "RemoteJobs.org": _remotejobs_org,
+        "Agency hiring pages": lambda: _ats(cfg),
+        "Podnews jobs": lambda: _rss("Podnews", "https://podnews.net/prebuilt/rss-jobs.xml"),
         "Himalayas": lambda: _himalayas(cfg),
         "Bluesky hiring posts": _bluesky,
         "Remote First Jobs": _remote_first,
@@ -1005,15 +1166,21 @@ def fetch_other_boards(cfg):
         except Exception as e:
             print(f"{name} failed: {type(e).__name__}: {str(e)[:120]}")
     max_age = min(45, (cfg.get("jobs") or {}).get("max_age_days", 30))
-    skip_words = [w.lower() for w in (cfg.get("jobs") or {}).get("exclude", [])]
+    jc = cfg.get("jobs") or {}
+    skip_words = [w.lower() for w in jc.get("exclude", [])]
+    worldwide = jc.get("worldwide_only", True)
     keep, seen_urls = [], set()
     for board, jid, title, company, url, posted, text, pay in out:
         if not title or not jid or not BOARD_TITLE.search(title) or BOARD_SKIP.search(title):
             continue
         if any(w in title.lower() for w in skip_words) or url in seen_urls:
             continue
-        try:
-            if posted and (dt.date.today() - dt.date.fromisoformat(posted)).days > max_age:
+        if worldwide and (text or "").startswith("Open to: ") and not text.startswith("Open to: worldwide"):
+            continue  # locked to certain countries: international, open-to-anyone roles only
+        if jc.get("skip_low_pay", True) and pay_boost(pay, (text or "")[:600]) <= -15:
+            continue
+        try:  # agencies keep "always hiring" posts open for months: their own hiring pages skip the age check
+            if posted and not board.endswith("(agency)") and (dt.date.today() - dt.date.fromisoformat(posted)).days > max_age:
                 continue
         except ValueError:
             pass
@@ -1106,12 +1273,17 @@ def ensure_server():
 def cmd_daily(args):
     """The whole collection half of the morning run in ONE command (one permission approval, no stalls).
     Every step is isolated: a failure is logged and the next step still runs."""
+    import inbox
+    cfg = load_config()
+    # Low-DM mode with the email lane off: cold channels are never messaged, so don't spend 10 minutes finding them
+    cold = cfg.get("dm_mode", "all") != "warm" or effective_caps(cfg, "me").get("email", 0) > 0
     steps = [("server", lambda: print("server:", ensure_server())),
              ("team", lambda: team.sync(db())),  # before drafting: newest member list + teammates' claims
+             ("inbox", lambda: inbox.run(db(), load_config(), days=3)),  # job-alert emails -> jobs (before the export)
              ("jobs", lambda: cmd_jobs(argparse.Namespace(full=False))),
              ("job-leads", lambda: cmd_job_leads(argparse.Namespace(limit=60))),
-             ("discover", lambda: cmd_discover(argparse.Namespace(niches=None))),
-             ("enrich", lambda: cmd_enrich(argparse.Namespace(limit=None))),
+             ("discover", (lambda: cmd_discover(argparse.Namespace(niches=None))) if cold else (lambda: print("skipped: low-DM mode"))),
+             ("enrich", (lambda: cmd_enrich(argparse.Namespace(limit=None))) if cold else (lambda: print("skipped: low-DM mode"))),
              ("to-draft", lambda: cmd_to_draft(argparse.Namespace(limit=None, account="me")))]
     results = {}
     for name, fn in steps:
@@ -1163,13 +1335,15 @@ def main():
                                                     help="this PC replaces the old PC registered under your name")
     s = sub.add_parser("team-join"); s.add_argument("name")
     s = sub.add_parser("check"); s.add_argument("query", help="a profile / job link, @handle or email")
+    s = sub.add_parser("inbox"); s.add_argument("--days", type=int, default=3); s.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("finish"); s.add_argument("file", nargs="?", default=str(WORK / "drafts.json")); s.add_argument("--force", action="store_true")
     a = ap.parse_args()
     {"add-channels": cmd_add_channels, "discover": cmd_discover, "enrich": cmd_enrich, "to-draft": cmd_to_draft,
      "import-drafts": cmd_import_drafts, "jobs": cmd_jobs, "job-leads": cmd_job_leads, "report": cmd_report, "status": cmd_status,
      "daily": cmd_daily, "finish": cmd_finish,
      "team-sync": lambda a: team.sync(db(), take_over=a.take_over), "team-join": lambda a: team.join(db(), a.name),
-     "check": lambda a: print(json.dumps(team.check(db(), load_config(), a.query), indent=1))}[a.cmd](a)
+     "check": lambda a: print(json.dumps(team.check(db(), load_config(), a.query), indent=1)),
+     "inbox": lambda a: __import__("inbox").run(db(), load_config(), days=a.days, dry=a.dry_run)}[a.cmd](a)
 
 
 if __name__ == "__main__":

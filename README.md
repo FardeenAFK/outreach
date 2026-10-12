@@ -1,12 +1,16 @@
 # Outreach: daily client finder + one-click send queue
 
-For freelance video editors. Every morning at 7:00 a Claude run finds YouTube channels that could use an editor,
-checks YT Jobs for new editing gigs, finds the posters' Instagram / X / LinkedIn, and writes a personal first
-message or proposal for each. You open the queue page, click **Open profile + copy**, paste, press Enter, then
-**Sent ✓ → next** (it opens the next person with their message already copied).
+For freelance video editors. Every morning at 7:00 a Claude run collects editing jobs from many places (job-board
+feeds, YT Jobs, and the job-alert emails Indeed / LinkedIn / Glassdoor & co. send you) and writes a proposal for
+each, plus a short DM for people who publicly posted that they're hiring. You open the queue page and work through
+it: **Open job + copy** → paste → submit → **Applied ✓ → next**, and the same for DMs.
 
-Nothing is ever sent automatically. The queue never reads or touches LinkedIn, Instagram or X pages: it only opens a
-URL and copies text. That, the daily caps and one-message-per-person keep your accounts safe.
+**Applications first, DMs second.** Applying to posted jobs carries no account risk, so that is the main lane.
+DMs are capped low and, in the default *Low-DM mode*, only go to people who asked for an editor in public.
+
+Nothing is ever sent automatically. The queue never reads or touches LinkedIn, Instagram, X or job-board pages: it
+only opens a URL and copies text. Sites that forbid bots are never automated, not even through "turn any site into an
+API" tools: that is exactly what gets accounts banned.
 
 ## Install on your PC (Windows)
 1. Send the repo owner your GitHub username and accept the invite (GitHub emails it to you).
@@ -43,7 +47,12 @@ and does a first run (about 40 minutes).
 - **Replies**: when someone answers, click **Replied**. That stops their follow-ups. Mark **Won** / **Dead**.
   Filter by replied / waiting / LinkedIn accept, or search by name.
 - **Jobs**:
-  - *Proposals*: drafted for new posts from YT Jobs and the feeds below. Open job + copy, then **Applied ✓**.
+  - *Proposals*: drafted for every new job from the feeds, YT Jobs and your alert emails. `O` open job + copy,
+    paste and submit, then `A` = **Applied ✓ → next** (logs it in the Tracker and opens the next one, copied).
+  - *Alerts*: connect a mailbox once (an app password, stored encrypted outside the folder), then switch on job
+    alerts on each listed site. Every morning the alert emails become proposals. Use a separate mailbox just for alerts.
+  - *Apply kit*: your standard answers (intro, why me, samples, software, rate, turnaround, payment) with one-click
+    Copy for application forms. Edit them in Settings.
   - *Find jobs*: one-click searches for the sites that ban bots (Indeed, LinkedIn Jobs, Upwork, Freelancer,
     OnlineJobs.ph, Himalayas, Contra, Workana, PeoplePerHour) plus places people post "hiring an editor" right now
     (X, LinkedIn posts, Reddit r/HireAnEditor and r/forhire, Facebook groups). Change the keyword at the top.
@@ -64,7 +73,12 @@ Scanned every morning, only through feeds or APIs their owners publish for this,
 YT Jobs, Himalayas, Remote First Jobs, Remote OK, Jobicy, Work With Indies, Open Assignments, Dribbble,
 We Work Remotely (title + link only, their terms forbid storing the rest), and Bluesky "hiring" posts (read only).
 Indeed, Upwork, LinkedIn, Freelancer.com, Fiverr, Glassdoor and Reddit forbid bots in their terms, so they are
-links you open yourself. Never add a scraper for them: it gets accounts banned.
+links you open yourself (or job-alert emails, see Alerts). Never add a scraper for them: it gets accounts banned.
+
+**International, best-paid first.** Only jobs open worldwide are kept (no country-locked posts), low-paying ones
+(e.g. $30 shorts edits) are skipped, and the rest are ranked by pay: YT Jobs pay is read per project / hour / year.
+Agency posts get a small boost (they hire again and again) and an "agency" tag. Both switches live in Settings → Job
+search. Measured on YT Jobs (Oct 2026): median $325 per video, $438 at 100K+ channels, ~18 well-paid posts a week.
 
 ## Email (optional, off by default)
 Channels whose only public contact is a business email can go into an Email lane. You send each one yourself from
@@ -73,7 +87,9 @@ and an opt-out line in every cold email, so the lane stays off until both are fi
 Keep it under 10 a day, ideally from a separate business address.
 
 ## Safety rules built in
-- Week 1 runs at 60% of your caps and week 2 at 80%. Full caps after that (X 30, Instagram 20, LinkedIn 15, Facebook 10).
+- **Low-DM mode (default)**: social DMs only to people who publicly posted they're hiring, at X 10 / Instagram 8 /
+  LinkedIn 5 / Facebook 3 a day. Switch to "Everyone" in Settings only if your accounts are old and replies are good.
+- Week 1 runs at 60% of your caps and week 2 at 80%. Full caps after that.
 - One platform per person, never a pitch on three apps at once. Every message is written differently, and
   `tools/check_drafts.py` rejects repeated phrases, invented experience and links where they aren't allowed.
 - Bans come mostly from people ignoring or reporting you, not only from volume. If replies are near
@@ -107,6 +123,10 @@ settings, leads or history. Teammates don't commit code to `main`; send changes 
 - `engine.py daily`: the whole morning collection in one command. `engine.py finish`: check, import, report, sync.
 - `engine.py check LINK`: free / yours / a teammate's. `engine.py team-sync [--take-over]`, `engine.py team-join NAME`.
 - `team.py`: the team split, claims and the `team` branch sync.
+- `inbox.py`: reads job-alert emails from your mailbox (read-only, never marks anything) and adds the jobs.
+  `python engine.py inbox --dry-run` lists what it would add. The login lives in `%APPDATA%\Outreach\inbox.json`,
+  password encrypted with Windows DPAPI.
+- `sources.json`: every job source shown in the Jobs tab (auto feeds, alert sites, manual links). Edit to add more.
 - `DAILY-TASK.md`: what the 7am Claude run does, including the message-writing rules.
 - `SETUP.md`: the install steps Claude follows on a new PC.
 - `config.example.json`: the starting `config.json` (caps, ramp-up, follow-up days, filters, job keywords, your profile).

@@ -15,10 +15,10 @@
     "me": {
       "label": "YOUR_NAME",
       "caps": {
-        "x": 30,
-        "instagram": 20,
-        "linkedin": 15,
-        "facebook": 10,
+        "x": 10,
+        "instagram": 8,
+        "linkedin": 5,
+        "facebook": 3,
         "email": 0
       }
     }
@@ -154,15 +154,90 @@
     "max_age_days": 45,
     "max_pages": 12,
     "dm_min_fit": 45,
-    "country": "",
-    "search_keyword": "video editor"
+    "search_keyword": "video editor",
+    "worldwide_only": true,
+    "skip_low_pay": true,
+    "ats_boards": [
+      {
+        "ats": "lever",
+        "board": "superside",
+        "name": "Superside"
+      },
+      {
+        "ats": "lever",
+        "board": "instrument",
+        "name": "Instrument"
+      },
+      {
+        "ats": "greenhouse",
+        "board": "mrbeastyoutube",
+        "name": "MrBeast"
+      },
+      {
+        "ats": "greenhouse",
+        "board": "aplayers",
+        "name": "MrBeast contract"
+      },
+      {
+        "ats": "greenhouse",
+        "board": "spotter",
+        "name": "Spotter"
+      },
+      {
+        "ats": "greenhouse",
+        "board": "viralnation",
+        "name": "Viral Nation"
+      },
+      {
+        "ats": "greenhouse",
+        "board": "commonthreadcollective",
+        "name": "Common Thread Collective"
+      },
+      {
+        "ats": "greenhouse",
+        "board": "vaynermedia",
+        "name": "VaynerMedia"
+      },
+      {
+        "ats": "ashby",
+        "board": "snowball",
+        "name": "Snowball"
+      },
+      {
+        "ats": "ashby",
+        "board": "inbeat-agency",
+        "name": "inBeat"
+      },
+      {
+        "ats": "ashby",
+        "board": "darkroom",
+        "name": "Darkroom"
+      },
+      {
+        "ats": "recruitee",
+        "board": "careers.vidiq.com",
+        "name": "vidIQ"
+      },
+      {
+        "ats": "teamtailor",
+        "board": "electrify",
+        "name": "The Rundown (Electrify)"
+      },
+      {
+        "ats": "teamtailor",
+        "board": "jobs.littledotstudios.com",
+        "name": "Little Dot Studios"
+      }
+    ]
   },
   "daily": {
     "new_leads_to_enrich": 120,
     "new_leads_to_draft": 25,
-    "jobs_to_draft": 10
+    "jobs_to_draft": 20
   },
   "team": {
     "me": "YOUR_TEAM_NAME"
-  }
+  },
+  "dm_mode": "warm",
+  "apply_kit": []
 }

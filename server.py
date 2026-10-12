@@ -9,6 +9,8 @@ GET  /api/stats?account=me
 GET  /api/config                  everything the Settings tab edits
 GET  /api/team                    team list, this PC's name, last sync, conflicts
 GET  /api/check?q=URL_OR_HANDLE   free / mine / a teammate's
+GET  /api/sources                 every job source (auto feeds, alert emails, manual links) + alert inbox status
+POST /api/inbox         {action:"save"|"test"|"run"|"forget", user?, password?, host?}  (password is write-only)
 POST /api/mark          {kind:"message"|"lead"|"job", id, action, body?, account?}
 POST /api/applications  {action:"add"|"update"|"delete", id?, url, title, company, board, status, notes, force?}
 POST /api/team/sync     sync the team branch now
@@ -26,8 +28,9 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 from core import PLATFORMS, MAX_CAPS, load_config, save_config, db, now, today, add_days, effective_caps, log_event
-from engine import stats, JOB_SOURCES
+from engine import stats, JOB_SOURCES, pay_boost
 import team
+import inbox
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -300,9 +303,12 @@ def public_config(cfg):
             "followup_days": cfg["followup_days"], "max_caps": MAX_CAPS, "platforms": list(PLATFORMS),
             "profile": {k: cfg.get(k) for k in ("sender_name", "offer", "profile", "us_based", "not_installed", "private_tools")},
             "email": cfg.get("email") or {}, "daily": cfg.get("daily") or {},
-            "jobs": {k: (cfg.get("jobs") or {}).get(k) for k in ("max_age_days", "dm_min_fit", "search_keyword", "country", "include", "exclude")}
+            "jobs": {k: (cfg.get("jobs") or {}).get(k) for k in ("max_age_days", "dm_min_fit", "search_keyword", "include", "exclude")}
+                    | {"worldwide_only": (cfg.get("jobs") or {}).get("worldwide_only", True),
+                       "skip_low_pay": (cfg.get("jobs") or {}).get("skip_low_pay", True)}
                     | {"sources": {n: ((cfg.get("jobs") or {}).get("sources") or {}).get(n, True) for n in JOB_SOURCES}},
-            "team": {"me": t.get("me"), "members": t.get("members") or [], "solo": bool(t.get("solo"))}}
+            "team": {"me": t.get("me"), "members": t.get("members") or [], "solo": bool(t.get("solo"))},
+            "dm_mode": cfg.get("dm_mode", "all"), "apply_kit": cfg.get("apply_kit") or []}
 
 
 def _int(v, lo, hi):
@@ -385,8 +391,9 @@ def update_config(cfg, p):
             j["max_age_days"] = n
         if isinstance(p["jobs"].get("search_keyword"), str) and p["jobs"]["search_keyword"].strip():
             j["search_keyword"] = p["jobs"]["search_keyword"].strip()[:60]
-        if isinstance(p["jobs"].get("country"), str):
-            j["country"] = p["jobs"]["country"].strip()[:60]
+        for k in ("worldwide_only", "skip_low_pay"):
+            if isinstance(p["jobs"].get(k), bool):
+                j[k] = p["jobs"][k]
         if isinstance(p["jobs"].get("sources"), dict):
             src = j.setdefault("sources", {})
             for k, v in p["jobs"]["sources"].items():
@@ -395,6 +402,15 @@ def update_config(cfg, p):
         for k in ("include", "exclude"):
             if (lst := _list(p["jobs"].get(k), 60, 40)) is not None and lst:
                 j[k] = lst
+    if p.get("dm_mode") in ("warm", "all"):
+        cfg["dm_mode"] = p["dm_mode"]
+    if isinstance(p.get("apply_kit"), list):
+        kit = []
+        for it in p["apply_kit"][:12]:
+            if isinstance(it, dict) and isinstance(it.get("label"), str) and isinstance(it.get("text"), str) \
+                    and it["label"].strip() and it["text"].strip():
+                kit.append({"label": it["label"].strip()[:40], "text": it["text"].strip()[:1500]})
+        cfg["apply_kit"] = kit
     # anti-spam law: a cold email needs the sender's postal address and an opt-out line
     e = cfg.get("email") or {}
     for a in cfg["accounts"].values():
@@ -402,6 +418,53 @@ def update_config(cfg, p):
             a["caps"]["email"] = 0
             notes.append("Email stays off until you add your postal address and an opt-out line (anti-spam law).")
     return notes
+
+
+# ---------------------------------------------------------------- job sources + alert inbox
+
+SOURCES = Path(__file__).resolve().parent / "sources.json"
+
+
+def inbox_status(con=None):
+    login = inbox.load_login() or {}
+    st = {"configured": bool(login), "user": inbox.masked(login.get("user")), "host": login.get("host"), "seen": {}}
+    if con is not None and con.execute("SELECT 1 FROM sqlite_master WHERE name='inbox_seen'").fetchone():
+        st["seen"] = dict(con.execute("SELECT board, COUNT(*) FROM inbox_seen WHERE day>=? GROUP BY board",
+                                      (add_days(-14),)).fetchall())
+        st["jobs"] = dict(con.execute("SELECT board, SUM(jobs) FROM inbox_seen WHERE day>=? GROUP BY board",
+                                      (add_days(-14),)).fetchall())
+    return st
+
+
+def sources(con):
+    try:
+        data = json.loads(SOURCES.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {"auto": [], "alerts": [], "manual": []}
+    data["inbox"] = inbox_status(con)
+    return data
+
+
+def inbox_action(p):
+    act = p.get("action")
+    try:
+        if act == "save":
+            inbox.save_login(p.get("user"), p.get("password"), p.get("host") or None)
+            return 200, {"ok": True, "inbox": inbox_status()}
+        if act == "forget":
+            inbox.forget_login()
+            return 200, {"ok": True}
+        if act == "test":
+            return 200, {"ok": True, "counts": inbox.test_login()}
+        if act == "run":
+            con = db()
+            try:
+                return 200, {"ok": True, **inbox.run(con, load_config(), days=int(p.get("days") or 7))}
+            finally:
+                con.close()
+    except (ValueError, RuntimeError, OSError) as e:
+        return 400, {"error": str(e)[:300]}
+    return 400, {"error": "bad action"}
 
 
 # ---------------------------------------------------------------- HTTP
@@ -522,9 +585,10 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/pipeline":
                 return self._send(200, pipeline(con, account))
             if u.path == "/api/jobs":
-                rows = con.execute("SELECT id, board, title, company, channel_url, pay, url, posted, fit, proposal FROM jobs "
+                rows = con.execute("SELECT id, board, title, company, channel_url, pay, url, posted, fit, proposal, "
+                                   "(text LIKE '[agency]%' OR board LIKE '%(agency)') AS agency FROM jobs "
                                    "WHERE status='drafted' ORDER BY fit DESC").fetchall()
-                return self._send(200, [dict(r) for r in rows])
+                return self._send(200, [dict(r) | {"pay_tier": pay_boost(r["pay"])} for r in rows])
             if u.path == "/api/applications":
                 return self._send(200, applications(con))
             if u.path == "/api/stats":
@@ -537,6 +601,8 @@ class Handler(BaseHTTPRequestHandler):
                                         "status": team.status(), "solo": bool((cfg.get("team") or {}).get("solo"))})
             if u.path == "/api/check":
                 return self._send(200, team.check(con, cfg, q.get("q", "")[:500]))
+            if u.path == "/api/sources":
+                return self._send(200, sources(con))
             self._send(404, {"error": "not found"})
         finally:
             con.close()
@@ -555,6 +621,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, {"error": "bad request"})
         cfg = load_config()
         path = urlparse(self.path).path
+        if path == "/api/inbox":
+            return self._send(*inbox_action(p))
         if path in ("/api/mark", "/api/applications", "/api/team/sync"):
             con = db()
             try:

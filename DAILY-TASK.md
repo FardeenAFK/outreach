@@ -106,12 +106,30 @@ These people publish a business email and no DM-able profile. The sender sends e
 It is a company or brand channel (airlines, media outlets, big studios), a news channel, clearly run by a
 large team, kids content, or anything you would be embarrassed to pitch. Put its id in `skip_leads`.
 
-### Job proposals (YT Jobs)
+### Job proposals (every board)
 120-200 words. Open with THEIR need in their words (the niche, the format, the video length). Match it to
 what the sender does (`sender_profile`). If the post asks for a keyword, a question to be answered or a specific first line,
 **do exactly that**. Offer a short test edit. Do not invent experience, clients or years. End with
 availability and turnaround. Skip jobs that are on-site, full-time staff roles needing US work
-authorisation, thumbnail/writing-only, or a poor fit (`skip_jobs`).
+authorisation, thumbnail/writing-only, or a poor fit (`skip_jobs`). Jobs come from many boards (`board` field):
+- **Text says "Open to: <countries>"** (Himalayas, Remote First Jobs): skip unless it says worldwide. The sender
+  wants international, US-dollar clients: skip local/regional jobs and anything that needs residence in one country.
+- **Pay**: jobs arrive best-paid first. Draft those first; skip anything that pays under ~$15/hour, ~$60 per
+  finished video or ~$800/month for full-time work (`skip_jobs`).
+- **From a job-alert email** (text starts "From your <board> job alert"): you only have the title, company and a few
+  words, never the full post. Write a proposal that works without them: anchor on the job title and company, the
+  sender's matching skills and the free test edit, and never guess requirements. 90-150 words.
+- **Upwork**: the client sees the first two lines in the list, so line one is about THEIR project. 120-180 words,
+  end with one question. **Indeed / LinkedIn / Glassdoor / Wellfound**: a short note to the hiring team, 80-130 words,
+  first person, no greeting fluff; skip roles that need residence in one country or relocation.
+  **OnlineJobs.ph**: skip if it requires living in the Philippines. **Bluesky / X posts**: 60-100 words, conversational.
+- Never write `[ADD ...]` placeholders in a proposal: the sender pastes it as it is.
+- **Agency posts** (`[agency]` in the text, or a board ending in "(agency)"): agencies hire again and again, so these
+  are worth the best proposal of the day. Mention volume and reliability (turnaround, revisions, consistency).
+- **Red flags: skip** (`skip_jobs`, and say why in the report): unpaid test edits longer than ~60 seconds or "3 reels
+  from our footage", any fee to join/apply, pay "based on your current income", quotas like "30 pieces a week" at low
+  pay, "1099 / US residents only / 401k" (US-only), on-site or relocation. A short unpaid sample is fine: say it will
+  be watermarked.
 
 ## 4. Report
 `finish` already wrote the report; reply with 4-6 lines: how many leads were drafted per platform, jobs drafted,

@@ -145,20 +145,23 @@ async function removeCard(card) {
 }
 
 // ---------- Today
-const visibleCards = () => [...document.querySelectorAll("#today .card.msg:not(.leaving)")];
+// the card list the keyboard works on: messages on Today, proposals on Jobs
+const cardSel = () => (state.tab === "jobs" ? "#jobs .card.prop" : "#today .card.msg");
+const visibleCards = () => [...document.querySelectorAll(`${cardSel()}:not(.leaving)`)];
 function setCurrent(card) {
-  document.querySelectorAll("#today .card.current").forEach((c) => c.classList.remove("current"));
+  document.querySelectorAll(".card.current").forEach((c) => c.classList.remove("current"));
   const target = card || visibleCards()[0];
   if (target) target.classList.add("current");
   return target;
 }
-const currentCard = () => document.querySelector("#today .card.msg.current:not(.leaving)") || setCurrent();
+const currentCard = () => document.querySelector(`${cardSel()}.current:not(.leaving)`) || setCurrent();
 
 async function renderToday() {
   const sec = $("today");
   if (!sec.childElementCount) put(sec, ...skeleton(3));
-  let q;
-  try { q = await api(`/api/queue?account=${enc(state.account)}`); } catch (e) { return serverDown(sec, e); }
+  let q, props = [];
+  try { [q, props] = await Promise.all([api(`/api/queue?account=${enc(state.account)}`), api("/api/jobs").catch(() => [])]); }
+  catch (e) { return serverDown(sec, e); }
   const groups = Object.entries(q).filter(([, g]) => g.cap);
   const left = groups.reduce((a, [, g]) => a + g.items.length, 0);
   const sent = groups.reduce((a, [, g]) => a + g.sent, 0);
@@ -167,6 +170,10 @@ async function renderToday() {
   const t = state.team;
   if (t && !t.ready) nodes.push(h("div", { class: "errbox" }, h("b", {}, "New drafts are paused: "), t.why,
     " ", h("a", { href: "#", onclick: (e) => { e.preventDefault(); show("team"); } }, "Open Team")));
+  if (props.length) nodes.push(h("button", { class: "okbox", style: "display:flex;width:100%;align-items:center;gap:10px;text-align:left;cursor:pointer;color:inherit",
+    onclick: () => { store({ jobsView: "proposals" }); show("jobs"); } },
+    h("b", { style: "font-size:18px" }, props.length), h("span", {}, props.length === 1 ? "job proposal is ready to send" : "job proposals are ready to send",
+      h("span", { class: "muted small" }, " · open job, paste, submit")), h("span", { class: "spacer" }), h("span", {}, "Jobs →")));
   if (!groups.length) {
     nodes.push(empty("No platforms switched on", "Set a daily cap above 0 in Settings → Platforms."));
     return put(sec, ...nodes);
@@ -367,109 +374,191 @@ async function renderPipeline() {
       empty(rows.length ? "Nobody matches" : "No one contacted yet", rows.length ? "Try another filter." : "People you mark Sent show up here."));
 }
 
-// ---------- Jobs: proposals, find jobs, tracker
-function boardGroups(kw) {
-  const q = enc(kw);
-  return [
-    ["People hiring right now (posts)", "Read the post, then DM or apply yourself. Check the link first so you don't double up with a teammate.", [
-      ["X: “hiring” + " + kw + ", newest", `https://x.com/search?q=${enc(`hiring "${kw}"`)}&f=live`, "fresh posts, reply or DM by hand"],
-      ["LinkedIn posts: hiring " + kw + ", past week", `https://www.linkedin.com/search/results/content/?keywords=${enc(`hiring ${kw}`)}&datePosted=%22past-week%22&sortBy=%22date_posted%22`, "comment or DM by hand"],
-      ["Reddit r/HireAnEditor, newest", "https://www.reddit.com/r/HireAnEditor/new/", "creators post jobs daily"],
-      ["Reddit r/forhire: [Hiring] " + kw, `https://www.reddit.com/r/forhire/search/?q=${enc(`hiring ${kw}`)}&restrict_sr=1&sort=new`, "filter by [Hiring]"],
-      ["Reddit r/VideoEditingRequests", "https://www.reddit.com/r/VideoEditingRequests/new/", "small paid gigs"],
-      ["Facebook groups: " + kw + " jobs", `https://www.facebook.com/search/groups/?q=${enc(kw + " jobs")}`, "join 3-5 active groups"],
-    ]],
-    ["Job boards (search by hand: these sites ban bots)", "Apply yourself, then press Log so the tracker and your teammates know.", [
-      ["Indeed: " + kw + ", remote, last 3 days", `https://www.indeed.com/jobs?q=${q}&l=Remote&fromage=3&sort=date`, "check who can apply"],
-      ["LinkedIn Jobs: " + kw + ", remote, last 24h", `https://www.linkedin.com/jobs/search/?keywords=${q}&f_WT=2&f_TPR=r86400`, "Easy Apply is fine, by hand"],
-      ["Upwork: " + kw + ", newest", `https://www.upwork.com/nx/search/jobs/?q=${q}&sort=recency`, "manual only, no extensions"],
-      ["Freelancer.com: video editing", "https://www.freelancer.com/jobs/video-editing/", "bidding war, manual only"],
-      ["OnlineJobs.ph: " + kw, `https://www.onlinejobs.ph/jobseekers/jobsearch?jobkeyword=${q}`, "very active"],
-      ["Himalayas: " + kw, `https://himalayas.app/jobs?q=${q}`, "shows eligible countries"],
-      ["Jobgether: video editor", "https://jobgether.com/remote-jobs/video-editor", "shows eligible regions"],
-      ["Remote Rocketship: open to Bangladesh", "https://www.remoterocketship.com/country/bangladesh/jobs/video-editor", "country-filtered"],
-      ["PeoplePerHour: " + kw, `https://www.peopleperhour.com/freelance-jobs?q=${q}`, ""],
-      ["Workana: " + kw, `https://www.workana.com/en/jobs?query=${q}`, "few bids per job"],
-      ["Contra: " + kw, `https://contra.com/jobs?q=${q}`, "0% commission"],
-      ["YT Jobs: editing jobs", "https://ytjobs.co/job/search/video_editor", "already scanned every morning"],
-      ["yt.careers", "https://yt.careers/", "starter pay"],
-    ]],
-    ["Let clients come to you", "Listings that work while you sleep.", [
-      ["Fiverr: see what sells for " + kw, `https://www.fiverr.com/search/gigs?query=${q}`, "copy the packaging, not the price"],
-      ["Contra: make a free profile", "https://contra.com/", ""],
-    ]],
-    ["Agencies hiring editors (steady work)", "", [
-      ["Increditors: YouTube + Reels editor roles", "https://increditors.com/careers/", ""],
-      ["Vidpros: video editor (email CV + portfolio)", "https://vidpros.com/hiring/video-editor", ""],
-    ]],
-  ];
-}
+// ---------- Jobs: proposals, alerts, apply kit, find jobs, tracker
+const kwOf = () => (state.config && state.config.jobs && state.config.jobs.search_keyword) || "video editor";
+const fill = (url, kw) => url.split("{q}").join(enc(kw));
+const JOB_VIEWS = [["proposals", "Proposals"], ["alerts", "Alerts"], ["kit", "Apply kit"], ["find", "Find jobs"], ["tracker", "Tracker"]];
 
 async function renderJobs() {
   const sec = $("jobs");
+  if (!JOB_VIEWS.some(([k]) => k === state.jobsView)) state.jobsView = "proposals";
   const seg = h("div", { class: "seg", role: "tablist" },
-    ...[["proposals", "Proposals"], ["find", "Find jobs"], ["tracker", "Tracker"]].map(([k, label]) =>
+    ...JOB_VIEWS.map(([k, label]) =>
       h("button", { class: state.jobsView === k ? "on" : "", onclick: () => { store({ jobsView: k }); renderJobs(); } },
         label, h("span", { class: "badge", id: `jb-${k}` }))));
   const body = h("div", {}, ...skeleton(2));
   put(sec, seg, body);
-  let jobs = [], apps = [];
-  try { [jobs, apps] = await Promise.all([api("/api/jobs"), api("/api/applications")]); } catch (e) { return serverDown(body, e); }
+  let jobs = [], apps = [], src = null;
+  try { [jobs, apps, src] = await Promise.all([api("/api/jobs"), api("/api/applications"), api("/api/sources")]); }
+  catch (e) { return serverDown(body, e); }
   const due = apps.filter((a) => a.followup_now).length;
   $("jb-proposals").textContent = jobs.length || "";
   $("jb-tracker").textContent = due || "";
+  $("jb-alerts").textContent = src.inbox && src.inbox.configured ? "" : "!";
   setBadge("jobs", jobs.length + due);
-  if (state.jobsView === "find") return renderFind(body);
+  if (state.jobsView === "find") return renderFind(body, src);
   if (state.jobsView === "tracker") return renderTracker(body, apps);
+  if (state.jobsView === "alerts") return renderAlerts(body, src);
+  if (state.jobsView === "kit") return renderKit(body);
   if (!jobs.length) return put(body, empty("No drafted proposals right now",
-    "The morning run drafts proposals for new YT Jobs posts. Meanwhile: Find jobs."));
-  put(body, 
-    h("p", { class: "muted", style: "margin-top:0" }, "Drafted for you. Open the job, paste, adjust and submit it yourself. Applied ✓ adds it to the Tracker."),
-    ...jobs.map((j) => {
-      const ta = h("textarea", { class: "body", value: j.proposal || "" });
-      const card = h("div", { class: "card" },
-        h("div", { class: "top" }, h("div", {}, h("div", { class: "title" }, j.title),
-          h("div", { class: "meta" }, [j.company, j.board, j.pay, j.posted && `posted ${j.posted}`].filter(Boolean).join(" · "))),
-          h("span", { class: `tag ${j.fit >= 70 ? "good" : ""}` }, `fit ${Math.round(j.fit)}`)),
-        ta,
-        h("div", { class: "actions" },
-          h("button", { class: "primary", onclick: () => openAndCopy(j.url, ta.value, ta) }, "Open job + copy"),
-          ...[["applied", "Applied ✓", "ok"], ["skipped", "Skip", "btn ghost"]].map(([action, label, cls]) =>
-            h("button", { class: cls, onclick: async (ev) => {
-              ev.currentTarget.disabled = true;
-              try { await api("/api/mark", { kind: "job", id: j.id, action, account: state.account }); }
-              catch (e) { ev.currentTarget.disabled = false; return toast("Not saved: " + e.message, null, "bad"); }
-              removeCard(card);
-              toast(action === "applied" ? `Applied: ${j.title}. Added to the Tracker.` : `Skipped ${j.title}.`,
-                () => api("/api/mark", { kind: "job", id: j.id, action: "undo", undo: action, account: state.account }));
-            } }, label))));
-      requestAnimationFrame(() => autosize(ta));
-      return card;
-    }));
+    src.inbox && src.inbox.configured ? "The morning run drafts one for every new job it finds. Meanwhile: Find jobs."
+      : "Set up Alerts so Indeed, LinkedIn & co. email you jobs; the morning run turns them into proposals here."));
+  put(body,
+    h("p", { class: "muted", style: "margin-top:0" }, "Drafted for you. ", h("b", {}, "Open job + copy"),
+      " → paste → submit on the site → ", h("b", {}, "Applied ✓ → next"), ". Keys: ", h("kbd", {}, "O"), " open, ",
+      h("kbd", {}, "A"), " applied, ", h("kbd", {}, "X"), " skip, ", h("kbd", {}, "J"), "/", h("kbd", {}, "K"), " move."),
+    ...jobs.map(proposalCard));
+  setCurrent();
 }
 
-function renderFind(body) {
-  const kw = (state.config && state.config.jobs && state.config.jobs.search_keyword) || "video editor";
+function proposalCard(j) {
+  const ta = h("textarea", { class: "body", value: j.proposal || "" });
+  const card = h("div", { class: "card prop", "data-id": j.id });
+  const open = async () => { setCurrent(card); return openAndCopy(j.url, ta.value, ta); };
+  const mark = (action) => async (ev) => {
+    if (card.busy) return;
+    card.busy = true;
+    const b = ev && ev.currentTarget; if (b) b.disabled = true;
+    try { await api("/api/mark", { kind: "job", id: j.id, action, account: state.account }); }
+    catch (e) { card.busy = false; if (b) b.disabled = false; return toast("Not saved: " + e.message, null, "bad"); }
+    const list = visibleCards(), next = list[list.indexOf(card) + 1] || list[list.indexOf(card) - 1];
+    removeCard(card);
+    const n = Math.max(0, (+$("jb-proposals").textContent || 1) - 1);
+    $("jb-proposals").textContent = n || ""; setBadge("jobs", n);
+    toast(action === "applied" ? `Applied: ${j.title}. In the Tracker now.` : `Skipped ${j.title}.`,
+      () => api("/api/mark", { kind: "job", id: j.id, action: "undo", undo: action, account: state.account }));
+    if (next) { setCurrent(next); next.scrollIntoView({ block: "nearest", behavior: reduced() ? "auto" : "smooth" });
+                if (action === "applied" && next.actions) await next.actions.open(); }
+  };
+  card.actions = { open, sent: mark("applied"), skip: mark("skipped"), edit: () => ta.focus() };
+  card.addEventListener("pointerdown", () => setCurrent(card));
+  card.append(...[
+    h("div", { class: "top" }, h("div", {},
+        h("a", { class: "title", href: safeUrl(j.url) || "#", target: "_blank", rel: "noopener" }, j.title),
+        h("div", { class: "meta" }, [j.company, j.board, j.pay !== "unlisted" ? j.pay : null, j.posted && `posted ${j.posted}`].filter(Boolean).join(" · "))),
+      h("span", { class: "row", style: "gap:6px" }, j.pay_tier >= 12 ? h("span", { class: "tag good" }, "$$$ high pay") : null,
+        j.agency ? h("span", { class: "tag warn" }, "agency") : null,
+        h("span", { class: "tag" }, j.board || `fit ${Math.round(j.fit)}`))),
+    ta,
+    h("div", { class: "actions" },
+      h("button", { class: "primary", onclick: open }, "Open job + copy", h("kbd", {}, "O")),
+      h("button", { class: "ok", onclick: card.actions.sent, title: "Marks it applied, then opens + copies the next one (A)" }, "Applied ✓ → next", h("kbd", {}, "A")),
+      h("span", { class: "spacer" }),
+      h("button", { class: "btn ghost", onclick: card.actions.skip, title: "X" }, "Skip"))]);
+  requestAnimationFrame(() => autosize(ta));
+  return card;
+}
+
+function renderAlerts(body, src) {
+  const ib = src.inbox || {};
+  const kw = kwOf();
+  const user = h("input", { placeholder: "you@gmail.com", value: "", autocomplete: "off" });
+  const pass = h("input", { type: "password", placeholder: ib.configured ? "(saved; type a new one to change it)" : "16-letter app password", autocomplete: "new-password" });
+  const host = h("input", { placeholder: "auto (imap.gmail.com, outlook.office365.com…)", value: ib.host || "" });
+  const out = h("div", {});
+  const busy = async (btn, label, fn) => {
+    btn.disabled = true; const old = btn.textContent; btn.textContent = label;
+    try { await fn(); } catch (e) { put(out, h("div", { class: "errbox" }, e.message)); }
+    btn.disabled = false; btn.textContent = old;
+  };
+  const save = h("button", { class: "primary", onclick: () => busy(save, "Saving…", async () => {
+    await api("/api/inbox", { action: "save", user: user.value.trim() || undefined, password: pass.value, host: host.value.trim() });
+    toast("Mailbox saved (encrypted on this PC)."); renderJobs();
+  }) }, "Save");
+  const test = h("button", { class: "btn", onclick: () => busy(test, "Checking…", async () => {
+    const r = await api("/api/inbox", { action: "test" });
+    const rows = Object.entries(r.counts || {});
+    put(out, h("div", { class: rows.length ? "okbox" : "warnbox" }, rows.length
+      ? ["Connected. Alert emails in the last 14 days: ", rows.map(([b, n]) => `${b} ${n}`).join(" · ")]
+      : "Connected, but no job-alert emails from known job sites in the last 14 days. Set up the alerts below."));
+  }) }, "Test connection");
+  const run = h("button", { class: "btn", onclick: () => busy(run, "Reading…", async () => {
+    const r = await api("/api/inbox", { action: "run", days: 7 });
+    toast(`${r.added || 0} new jobs from ${r.emails || 0} alert emails. Proposals get drafted in the morning run.`);
+    renderJobs();
+  }) }, "Read alerts now");
+  const forget = h("button", { class: "btn ghost", onclick: async () => {
+    if (!confirm("Remove the saved mailbox login from this PC?")) return;
+    await api("/api/inbox", { action: "forget" }); renderJobs();
+  } }, "Forget");
+  const seen = ib.seen || {}, found = ib.jobs || {};
+  put(body,
+    h("div", { class: "panel" },
+      h("h3", {}, "How this works"),
+      h("p", { class: "small", style: "margin-top:0" }, "Indeed, LinkedIn, Glassdoor and others forbid bots, but they gladly ",
+        h("b", {}, "email you"), " new jobs for a saved search. Point those alerts at a mailbox, connect it here once, and every morning the jobs land in ",
+        h("b", {}, "Proposals"), " with a cover note already written. Nothing ever visits those sites for you; you only open, paste and submit."),
+      h("p", { class: "small muted" }, "Tip: use a separate free mailbox just for job alerts, so nothing personal is ever read.")),
+    h("div", { class: "panel" },
+      h("h3", {}, "1 · Connect the mailbox ", ib.configured ? h("small", { class: "tag good" }, `connected: ${ib.user}`) : h("small", { class: "tag warn" }, "not connected")),
+      h("div", { class: "grid2" }, h("label", {}, "Email address", user), h("label", {}, "App password", pass)),
+      h("details", { class: "why", style: "margin:-4px 0 8px" }, h("summary", {}, "Advanced: mail server"), h("label", {}, "IMAP server", host)),
+      h("div", { class: "row", style: "margin-bottom:10px" }, save, ib.configured ? [test, run, forget] : null),
+      h("p", { class: "small muted" }, "Gmail: turn on 2-Step Verification, then create an app password at ",
+        h("a", { href: "https://myaccount.google.com/apppasswords", target: "_blank", rel: "noopener" }, "myaccount.google.com/apppasswords"),
+        ". Outlook: account.microsoft.com → Security → App passwords. The password is encrypted for your Windows account, stored outside the Outreach folder, and never shown again."),
+      out),
+    h("div", { class: "panel" },
+      h("h3", {}, "2 · Turn on job alerts ", h("small", {}, `(search for “${kw}”, remote, daily emails to that mailbox)`)),
+      h("div", { class: "list" }, ...(src.alerts || []).map((a) => h("div", { class: "item" },
+        h("div", { class: "top" }, h("a", { class: "title", href: fill(a.setup, kw), target: "_blank", rel: "noopener" }, `${a.board} ↗`),
+          seen[a.board] ? h("span", { class: "tag good" }, `✓ ${seen[a.board]} emails · ${found[a.board] || 0} jobs (14 days)`) : h("span", { class: "tag" }, "no emails yet")),
+        h("div", { class: "small muted" }, a.how), a.note ? h("div", { class: "small faint" }, a.note) : null)))),
+    h("div", { class: "panel" },
+      h("h3", {}, "Also scanned automatically every morning ", h("small", {}, "(sites that publish a feed for this)")),
+      h("div", { class: "chips", style: "margin-bottom:10px" }, ...(src.auto || []).map((a) =>
+        h("a", { class: "fchip", href: a.url, target: "_blank", rel: "noopener", title: a.what }, a.name)))));
+}
+
+function renderKit(body) {
+  const kit = (state.config && state.config.apply_kit) || [];
+  const copy = async (text, btn) => {
+    try { await navigator.clipboard.writeText(text); btn.textContent = "Copied ✓"; setTimeout(() => { btn.textContent = "Copy"; }, 1200); }
+    catch (_) { toast("Copy failed: select the text and press Ctrl+C.", null, "bad"); }
+  };
+  if (!kit.length) return put(body, empty("Your apply kit is empty", "Add your standard answers (intro, rate, software, availability, samples) in Settings → Apply kit."));
+  put(body,
+    h("p", { class: "muted", style: "margin-top:0" }, "Standard answers for application forms. One click copies; paste into the form. Edit them in Settings → Apply kit."),
+    h("div", { class: "list" }, ...kit.map((k) => {
+      const b = h("button", { class: "btn small" }, "Copy");
+      b.addEventListener("click", () => copy(k.text, b));
+      return h("div", { class: "item" }, h("div", { class: "top" }, h("span", { class: "title" }, k.label), b),
+        h("div", { class: "small", style: "white-space:pre-line" }, k.text));
+    })),
+    h("div", { class: "row", style: "margin-top:10px" }, (() => {
+      const b = h("button", { class: "btn" }, "Copy all");
+      b.addEventListener("click", () => copy(kit.map((k) => `${k.label}:\n${k.text}`).join("\n\n"), b));
+      return b;
+    })()));
+}
+
+function renderFind(body, src) {
+  const kw = kwOf();
   const input = h("input", { value: kw, placeholder: "video editor", style: "max-width:240px", "aria-label": "Search keyword" });
   const apply = async () => {
     const v = input.value.trim(); if (!v) return;
     try { await api("/api/config", { jobs: { search_keyword: v } }); state.config.jobs.search_keyword = v; } catch (_) {}
-    renderFind(body);
+    renderFind(body, src);
   };
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); });
-  put(body, 
+  const groups = src.manual || [];
+  put(body,
     h("div", { class: "row", style: "margin-bottom:10px" }, h("span", { class: "muted" }, "Search for"), input,
       h("button", { class: "btn", onclick: apply }, "Update links")),
     h("p", { class: "muted small", style: "margin-top:0" },
-      "YT Jobs and the boards with public feeds are scanned automatically every morning. The sites below forbid bots, so you open them yourself: one click each."),
-    h("div", { class: "boards" }, ...boardGroups(kw).map(([title, note, links], i) => h("details", { open: i < 2 },
-      h("summary", {}, title, h("span", { class: "muted small", style: "font-weight:400;margin-left:auto" }, `${links.length}`)),
-      note ? h("div", { class: "muted small", style: "padding:0 12px 8px" }, note) : null,
-      ...links.map(([label, url, why]) => h("div", { class: "board" },
-        h("a", { href: url, target: "_blank", rel: "noopener" }, label, why ? h("span", { class: "why" }, why) : null),
-        h("button", { class: "btn ghost small", title: "Log something you applied to or pitched from here",
-          onclick: () => { store({ jobsView: "tracker" }); renderJobs().then(() => { const f = $("app-board"); if (f) { f.value = label.split(":")[0]; $("app-url").focus(); } }); } },
-          "Log")))))));
+      `${(src.auto || []).length} sources are scanned automatically every morning and alert emails come in through Alerts. `,
+      "The sites below forbid bots, so you open them yourself: one click each, then Log what you applied to."),
+    h("div", { class: "boards" }, ...groups.map((g, i) => h("details", { open: i < 2 },
+      h("summary", {}, g.group, h("span", { class: "muted small", style: "font-weight:400;margin-left:auto" }, `${g.links.length}`)),
+      g.note ? h("div", { class: "muted small", style: "padding:0 12px 8px" }, g.note) : null,
+      ...g.links.map((l) => {
+        const label = l.label.split("{q}").join(kw);
+        return h("div", { class: "board" },
+          h("a", { href: fill(l.url, kw), target: "_blank", rel: "noopener" }, label, l.why ? h("span", { class: "why" }, l.why) : null),
+          h("button", { class: "btn ghost small", title: "Log something you applied to or pitched from here",
+            onclick: () => { store({ jobsView: "tracker" }); renderJobs().then(() => { const f = $("app-board"); if (f) { f.value = label.split(":")[0]; $("app-url").focus(); } }); } },
+            "Log"));
+      })))));
 }
 
 function renderTracker(body, apps) {
@@ -643,6 +732,14 @@ async function renderSettings() {
   const sources = Object.entries(j.sources || {});
   const status = h("span", { class: "muted small" });
   const notes = h("div", {});
+  const kitRow = (k) => {
+    const row = h("div", { class: "kit-row", style: "display:grid;grid-template-columns:minmax(90px,160px) 1fr auto;gap:8px;margin-bottom:8px;align-items:start" },
+      h("input", { value: k.label, placeholder: "Label (e.g. Rate)", "aria-label": "Answer label" }),
+      h("textarea", { rows: 2, value: k.text, placeholder: "Your answer", "aria-label": "Answer text" }));
+    row.append(h("button", { class: "btn ghost small", title: "Remove", onclick: () => row.remove() }, "✕"));
+    return row;
+  };
+  const kitBox = h("div", {}, ...(c.apply_kit || []).map(kitRow));
   put(sec, 
     h("div", { class: "panel" }, h("h3", {}, "You ", h("small", {}, "(what every message is allowed to say)")),
       h("div", { class: "grid2" }, inp("sender_name", "Name at the end of messages", p.sender_name),
@@ -652,6 +749,9 @@ async function renderSettings() {
       h("div", { class: "grid2" }, inp("not_installed", "Software you DON'T have (comma separated)", list(p.not_installed), { placeholder: "Premiere, DaVinci" }),
         inp("private_tools", "Your own private tools (never mentioned)", list(p.private_tools)))),
     h("div", { class: "panel" }, h("h3", {}, "Platforms ", h("small", {}, "(daily caps; weeks 1-2 run at a lower ramp)")),
+      h("label", {}, "Who gets a DM", F.dm_mode = h("select", {},
+        h("option", { value: "warm" }, "Low-DM mode: only people who posted that they're hiring (safest)"),
+        h("option", { value: "all" }, "Everyone: hiring posters + cold YouTube channels"))),
       h("div", { class: "grid3" }, ...plats.map((pl) => inp("cap-" + pl, `${NAMES[pl] || pl} (max ${c.max_caps[pl]})`, (acc.caps || {})[pl] ?? 0,
         { type: "number", min: 0, max: c.max_caps[pl] }))),
       h("p", { class: "muted small" }, "New Instagram account? Keep it at 5-10. Bans come from people ignoring or reporting you, not only from volume."),
@@ -681,14 +781,18 @@ async function renderSettings() {
       chk("faceless_only", "Faceless channels only", f.faceless_only),
       chk("require_dm_contact", "Only channels with X / Instagram / LinkedIn listed", f.require_dm_contact)),
     h("div", { class: "panel" }, h("h3", {}, "Job search"),
-      h("div", { class: "grid3" }, inp("search_keyword", "Keyword for the Find-jobs links", j.search_keyword || "video editor"),
-        inp("country", "Your country (skip jobs not open to it)", j.country || "", { placeholder: "e.g. Bangladesh" }),
+      h("div", { class: "grid2" }, inp("search_keyword", "Keyword for the Find-jobs links", j.search_keyword || "video editor"),
         inp("max_age_days", "Ignore posts older than (days)", j.max_age_days, { type: "number", min: 3, max: 90 })),
+      chk("worldwide_only", "Only jobs open worldwide (skip posts locked to certain countries)", j.worldwide_only !== false),
+      chk("skip_low_pay", "Skip low-paying jobs (e.g. $30 shorts edits); best-paid jobs are always drafted first", j.skip_low_pay !== false),
       area("jobs_include", "A job title must mention one of", list(j.include), 2),
       area("jobs_exclude", "Skip job titles with", list(j.exclude), 2),
       sources.length ? [h("div", { class: "muted small", style: "margin-bottom:6px" }, "Feeds scanned every morning:"),
         h("div", { class: "grid2" }, ...sources.map(([name, on]) => chk("src-" + name, name, on))),
         h("p", { class: "muted small" }, "Only sites that publish a feed for this are scanned. Sites that ban bots are one-click links under Jobs → Find jobs.")] : null),
+    h("div", { class: "panel" }, h("h3", {}, "Apply kit ", h("small", {}, "(standard answers for application forms: Jobs → Apply kit copies them)")),
+      kitBox,
+      h("div", { class: "row", style: "margin-bottom:10px" }, h("button", { class: "btn small", onclick: () => kitBox.append(kitRow({ label: "", text: "" })) }, "+ Add an answer"))),
     h("div", { class: "panel" }, h("h3", {}, "Appearance"), h("label", {}, "Theme", theme),
       chk("focus", "Start in focus mode (one person at a time)", state.focus),
       h("label", {}, "Local server", F.server = h("input", { value: state.server }))),
@@ -696,6 +800,7 @@ async function renderSettings() {
     h("div", { class: "savebar" }, h("button", { class: "primary", onclick: save }, "Save settings"), status));
   F.us_based.value = p.us_based ? "yes" : "no";
   F.client.value = e.client || "gmail";
+  F.dm_mode.value = c.dm_mode || "all";
   sec.addEventListener("input", () => { status.textContent = "Unsaved changes"; }, { once: true });
 
   async function save() {
@@ -705,6 +810,8 @@ async function renderSettings() {
     const days = (id) => arr(id).map((x) => parseInt(x, 10)).filter(Number.isFinite);
     const body = {
       account: state.account,
+      dm_mode: F.dm_mode.value,
+      apply_kit: [...kitBox.querySelectorAll(".kit-row")].map((row) => ({ label: row.children[0].value, text: row.children[1].value })),
       caps: Object.fromEntries(plats.map((pl) => [pl, num("cap-" + pl)])),
       followup_days: Object.fromEntries(plats.map((pl) => [pl, days("fu-" + pl)])),
       profile: { sender_name: val("sender_name"), offer: val("offer"), profile: val("profile"), us_based: F.us_based.value === "yes",
@@ -715,7 +822,7 @@ async function renderSettings() {
       filters: { min_subs: num("min_subs"), max_subs: num("max_subs"), max_days_since_upload: num("max_days_since_upload"),
                  min_uploads_90d: num("min_uploads_90d"), niches: arr("niches"), exclude_keywords: arr("exclude_keywords"),
                  countries_allow: arr("countries_allow"), faceless_only: F.faceless_only.checked, require_dm_contact: F.require_dm_contact.checked },
-      jobs: { search_keyword: val("search_keyword"), country: val("country"), max_age_days: num("max_age_days"), include: arr("jobs_include"), exclude: arr("jobs_exclude"),
+      jobs: { search_keyword: val("search_keyword"), worldwide_only: F.worldwide_only.checked, skip_low_pay: F.skip_low_pay.checked, max_age_days: num("max_age_days"), include: arr("jobs_include"), exclude: arr("jobs_exclude"),
               sources: Object.fromEntries(sources.map(([name]) => [name, F["src-" + name].checked])) },
     };
     await store({ server: val("server").replace(/\/$/, "") || DEFAULT_SERVER, focus: F.focus.checked });
@@ -768,17 +875,18 @@ document.addEventListener("keydown", (e) => {
   if (/^[1-6]$/.test(e.key)) return show(tabs[+e.key - 1]);
   if (e.key === "?") return showKeys();
   if (e.key.toLowerCase() === "u" && lastUndo) return lastUndo();
-  if (state.tab !== "today") return;
+  const proposals = state.tab === "jobs" && state.jobsView === "proposals";
+  if (state.tab !== "today" && !proposals) return;
   const card = currentCard();
   const list = visibleCards();
   const k = e.key.toLowerCase();
-  if (k === "f") return toggleFocus();
+  if (k === "f" && !proposals) return toggleFocus();
   if (!card) return;
   const move = (d) => { const n = list[Math.min(list.length - 1, Math.max(0, list.indexOf(card) + d))]; setCurrent(n);
                         n.scrollIntoView({ block: "nearest", behavior: reduced() ? "auto" : "smooth" }); };
   const map = { j: () => move(1), arrowdown: () => move(1), k: () => move(-1), arrowup: () => move(-1),
                 o: card.actions.open, enter: card.actions.open, s: card.actions.sent, t: card.actions.later,
-                x: card.actions.skip, e: card.actions.edit };
+                x: card.actions.skip, e: card.actions.edit, a: proposals ? card.actions.sent : null };
   if (map[k]) { e.preventDefault(); map[k](); }
 });
 

@@ -1,0 +1,550 @@
+{
+  "_about": "Every place to find editing work, shown in the queue's Jobs tab. 'auto' = scanned every morning through a feed the site allows. 'alerts' = the site emails you new jobs; the morning run reads them from your inbox (Jobs -> Alerts). 'manual' = the site forbids bots: one-click links, you apply yourself. {q} in a link is replaced by your search keyword.",
+  "updated": "2026-10-12",
+  "auto": [
+    {
+      "name": "YT Jobs",
+      "url": "https://ytjobs.co/",
+      "what": "creators + agencies hiring editors, 0% fee; median $325/video, ~18 well-paid posts a week"
+    },
+    {
+      "name": "Agency hiring pages",
+      "url": "https://jobs.lever.co/superside",
+      "what": "agencies' own Greenhouse/Lever/Ashby boards (watch-list in config: jobs.ats_boards)"
+    },
+    {
+      "name": "RemoteJobs.org",
+      "url": "https://remotejobs.org/",
+      "what": "~110 video-editor jobs, pay shown (powered by RemoteJobs.org)"
+    },
+    {
+      "name": "Himalayas",
+      "url": "https://himalayas.app/jobs/video-editor",
+      "what": "worldwide-only video and motion roles"
+    },
+    {
+      "name": "Remote First Jobs",
+      "url": "https://remotefirstjobs.com/",
+      "what": "remote design/video roles"
+    },
+    {
+      "name": "Remote OK",
+      "url": "https://remoteok.com/remote-video-jobs",
+      "what": "remote video jobs"
+    },
+    {
+      "name": "Jobicy",
+      "url": "https://jobicy.com/",
+      "what": "remote design & multimedia"
+    },
+    {
+      "name": "Work With Indies",
+      "url": "https://workwithindies.com/",
+      "what": "game studios: trailer editors, animators"
+    },
+    {
+      "name": "Open Assignments",
+      "url": "https://openassignments.com/",
+      "what": "documentary / news video (remote only kept)"
+    },
+    {
+      "name": "Podnews jobs",
+      "url": "https://podnews.net/jobs",
+      "what": "podcast companies hiring video editors"
+    },
+    {
+      "name": "Dribbble",
+      "url": "https://dribbble.com/jobs",
+      "what": "motion designers"
+    },
+    {
+      "name": "We Work Remotely",
+      "url": "https://weworkremotely.com/",
+      "what": "remote jobs (title + link only)"
+    },
+    {
+      "name": "Bluesky hiring posts",
+      "url": "https://bsky.app/search?q=%22video%20editor%22%20hiring",
+      "what": "people posting 'hiring a video editor'"
+    }
+  ],
+  "alerts": [
+    {
+      "board": "LinkedIn",
+      "setup": "https://www.linkedin.com/jobs/search/?keywords={q}&location=Worldwide&geoId=92000000&f_WT=2&sortBy=DD",
+      "how": "Best free alert source. Switch on 'Set alert' above the results, daily, by email. Make 3: video editor, motion designer, YouTube editor (up to 20 allowed)."
+    },
+    {
+      "board": "DailyRemote",
+      "setup": "https://dailyremote.com/remote-video-editor-jobs",
+      "how": "400+ remote video editor jobs, some tagged Worldwide. Create a free keyword email alert (no feed exists)."
+    },
+    {
+      "board": "Dynamite Jobs",
+      "setup": "https://dynamitejobs.com/remote-jobs",
+      "how": "Remote jobs with region tags (US online brands, ad agencies). Use 'Subscribe to Job Alerts' for video editor."
+    },
+    {
+      "board": "Upwork",
+      "setup": "https://www.upwork.com/nx/search/jobs/?q={q}&sort=recency&payment_verified=1&contractor_tier=2,3",
+      "how": "Biggest volume. Save the search (Find Work). Email alerts ('New job: ...') need Freelancer Plus and at least one sent proposal; apply by hand only.",
+      "note": "Search shows clients with verified payment, intermediate/expert budgets."
+    },
+    {
+      "board": "Freelancer",
+      "setup": "https://www.freelancer.com/jobs/video-editing/",
+      "how": "Add Video Editing, After Effects and Motion Graphics as profile skills, then Settings > Email & Notifications: new project emails for your skills."
+    },
+    {
+      "board": "PeoplePerHour",
+      "setup": "https://www.peopleperhour.com/freelance-jobs?q={q}",
+      "how": "Save the search; turn on its email if offered (not confirmed). ~170 video jobs, many above $100."
+    },
+    {
+      "board": "Indeed",
+      "setup": "https://www.indeed.com/jobs?q={q}&l=Remote&sort=date",
+      "how": "Optional: most remote Indeed jobs are US-only. If you try it: search, then 'Activate' the email alert under the results."
+    },
+    {
+      "board": "Stash Jobs",
+      "setup": "https://jobs.stashmedia.tv/job-alerts",
+      "how": "Motion-studio freelance calls (e.g. BIEN asks for USD weekday/weekend rates). Turn on its job alerts."
+    }
+  ],
+  "manual": [
+    {
+      "group": "Agencies hiring now: apply first (checked 2026-10-12)",
+      "note": "Open to remote editors anywhere, best pay first. Quote US-market rates; do paid tests only (or watermark short unpaid samples). Agencies' own hiring pages are also scanned every morning.",
+      "links": [
+        {
+          "label": "Dhar Mann Studios: International Shorts Editor (~$20/hr, ~40 h/week)",
+          "url": "https://dharmannstudios.bamboohr.com/careers/803",
+          "why": "big studio, reliable pay; apply by Nov 18"
+        },
+        {
+          "label": "vidIQ: YouTube Video Editor & Motion Designer",
+          "url": "https://ytjobs.co/job/44691",
+          "why": "closest skill match; PAID test; until Nov 26"
+        },
+        {
+          "label": "Superside: Creative (Motion Design), Global contractor",
+          "url": "https://jobs.lever.co/superside/b714cc57-df70-483e-be78-5cd898339e9a",
+          "why": "steady AE ad work; pick APAC in the form"
+        },
+        {
+          "label": "The Rundown: Long Form / Ad Creative / Short-Form + Motion editors",
+          "url": "https://electrify.teamtailor.com/jobs",
+          "why": "'work from anywhere on Earth'"
+        },
+        {
+          "label": "Hidden Engine: documentary + motion, $1,200-2,000 per video",
+          "url": "https://ytjobs.co/job/43941",
+          "why": "new channel: ask for milestone pay"
+        },
+        {
+          "label": "Voyager: math/science documentaries, $500-1,000 per video",
+          "url": "https://ytjobs.co/job/45191",
+          "why": "2 a month; paid trial"
+        },
+        {
+          "label": "Super B Agency: faceless documentary Shorts, $100-500",
+          "url": "https://ytjobs.co/job/44666",
+          "why": "200-400 videos a year in your style"
+        },
+        {
+          "label": "Lower Street: podcast video + AE motion (work from anywhere)",
+          "url": "https://lowerstreet.bamboohr.com/careers/42",
+          "why": "put the word 'Lime' in the application"
+        },
+        {
+          "label": "Linear Agency: DR ads + personal-brand YouTube (worldwide)",
+          "url": "https://linear-agency.breezy.hr/",
+          "why": "apply to both roles"
+        },
+        {
+          "label": "EFK: freelance motion designer / editor, $40-50/hr",
+          "url": "https://dribbble.com/jobs/309746",
+          "why": "confirm your country in the first message"
+        },
+        {
+          "label": "Bitsmith Agency: brand storytelling, $30-35k/yr",
+          "url": "https://ytjobs.co/job/44421",
+          "why": ""
+        },
+        {
+          "label": "Amplified Advisors: ads, VSLs, motion, $1,800-2,500/month",
+          "url": "https://ytjobs.co/job/45078",
+          "why": "30-second unpaid test only"
+        },
+        {
+          "label": "Afford Anything: podcast & video editor",
+          "url": "https://podnews.net/job/afford-anything/the-best-podcast-video-editor-role-ever",
+          "why": "CLOSES Oct 23; include 'this is the editing gig for me'"
+        },
+        {
+          "label": "Tasty Edits: editor pool (YouTube, lots of effects)",
+          "url": "https://tastyedits.com/hiring-video-editor/",
+          "why": "strict but trains you"
+        },
+        {
+          "label": "Vidpros: placed editors earn $1-3k/month",
+          "url": "https://vidpros.typeform.com/to/goEtSweq",
+          "why": ""
+        },
+        {
+          "label": "Flocksy: video + AE motion pool (email careers@flocksy.com)",
+          "url": "mailto:careers@flocksy.com",
+          "why": "'fully remote and global'"
+        },
+        {
+          "label": "Fame (B2B podcast agency): general application",
+          "url": "https://team.fame.so/form/fame-team-member-application",
+          "why": "'work from anywhere'"
+        }
+      ]
+    },
+    {
+      "group": "People hiring right now (posts)",
+      "note": "Fresh posts from creators and agencies. Reply or DM by hand within hours; check the link in Team first so you don't double up with a teammate.",
+      "links": [
+        {
+          "label": "X: creators with an audience hiring an editor",
+          "url": "https://x.com/search?q=%28%22hiring%22%20OR%20%22looking%20for%22%29%20%28%22video%20editor%22%20OR%20%22youtube%20editor%22%20OR%20%22long%20form%20editor%22%29%20min_faves%3A20%20-filter%3Areplies&f=live",
+          "why": "posts with real engagement = real channels"
+        },
+        {
+          "label": "X: hiring posts that state the pay",
+          "url": "https://x.com/search?q=%28%22hiring%22%20OR%20%22looking%20for%22%29%20editor%20%28%22per%20video%22%20OR%20%22%2Fvideo%22%20OR%20%22per%20month%22%29%20youtube%20-%22for%20hire%22%20-filter%3Areplies&f=live",
+          "why": "skip the guessing, see the rate"
+        },
+        {
+          "label": "X: agencies & studios hiring editors",
+          "url": "https://x.com/search?q=%28%22we%27re%20hiring%22%20OR%20%22we%20are%20hiring%22%29%20%28%22video%20editor%22%20OR%20%22motion%20designer%22%29%20%28agency%20OR%20studio%29%20remote%20-filter%3Areplies&f=live",
+          "why": "steady agency work"
+        },
+        {
+          "label": "LinkedIn posts: agencies hiring YouTube editors (past week)",
+          "url": "https://www.linkedin.com/search/results/content/?keywords=%22hiring%22%20AND%20%22video%20editor%22%20AND%20%28YouTube%20OR%20%22long-form%22%29%20AND%20remote&datePosted=%22past-week%22&sortBy=%22date_posted%22",
+          "why": "comment or DM by hand"
+        },
+        {
+          "label": "LinkedIn posts: hiring motion designers / After Effects",
+          "url": "https://www.linkedin.com/search/results/content/?keywords=%22we%27re%20hiring%22%20AND%20%28%22motion%20designer%22%20OR%20%22After%20Effects%22%29%20AND%20%28remote%20OR%20freelance%29&datePosted=%22past-week%22&sortBy=%22date_posted%22",
+          "why": ""
+        },
+        {
+          "label": "Reddit: 8 editor-hiring subs in one feed (newest)",
+          "url": "https://www.reddit.com/r/VideoEditor_forhire+VideoEditors_forhire+FindVideoEditors+VideoEditingRequests+HireAnEditor+YouTubeEditorForHire+CreatorServices+VideoEditors/new/",
+          "why": "answer [Hiring]/[Paid] posts under 24h old; Reddit needs WARP on this network"
+        },
+        {
+          "label": "Reddit r/forhire: [Hiring] {q}",
+          "url": "https://www.reddit.com/r/forhire/search/?q=hiring%20{q}&restrict_sr=1&sort=new",
+          "why": "budgets required; apply by DM"
+        },
+        {
+          "label": "Threads: hiring {q}, recent",
+          "url": "https://www.threads.com/search?q=hiring%20{q}&filter=recent",
+          "why": ""
+        },
+        {
+          "label": "Bluesky: \"{q}\" hiring (also scanned daily)",
+          "url": "https://bsky.app/search?q=%22{q}%22%20hiring",
+          "why": ""
+        }
+      ]
+    },
+    {
+      "group": "Communities with job channels (join once, turn on notifications)",
+      "note": "No bots allowed in any of these: join with your own account, mute everything except the job channels, and answer in the format each channel asks for.",
+      "links": [
+        {
+          "label": "Discord: video editors (149K, paid commissions)",
+          "url": "https://discord.gg/videoeditors",
+          "why": "the biggest editor commission server"
+        },
+        {
+          "label": "Discord: Editing | Mutuals (40K, employment section)",
+          "url": "https://discord.gg/editing",
+          "why": ""
+        },
+        {
+          "label": "Discord: Edit Big (13K, jobs system)",
+          "url": "https://discord.com/servers/edit-big-1130451542177218615",
+          "why": ""
+        },
+        {
+          "label": "Discord: Editing Hunt (clients post daily)",
+          "url": "https://discord.com/servers/editing-hunt-1301115754879520811",
+          "why": ""
+        },
+        {
+          "label": "Motion Design Artists Slack",
+          "url": "https://motionslack.com/",
+          "why": "professionals; apply with a portfolio, set keyword alerts"
+        },
+        {
+          "label": "Motionographer Jobs (newsletter + board)",
+          "url": "https://jobs.motionographer.com/",
+          "why": "motion studios, higher pay"
+        },
+        {
+          "label": "Facebook: Freelance Jobs - Video Editing (26K)",
+          "url": "https://www.facebook.com/groups/videoeditingjobs",
+          "why": "small but real; check a group's /about for posts per month"
+        }
+      ]
+    },
+    {
+      "group": "Motion studios with freelance rosters (send reel + USD day rate)",
+      "note": "No open vacancy today: get on their list so they call you when a project lands.",
+      "links": [
+        {
+          "label": "Ordinary Folk (Vancouver): freelance@ordinaryfolk.co",
+          "url": "mailto:freelance@ordinaryfolk.co",
+          "why": ""
+        },
+        {
+          "label": "Giant Ant (Vancouver): use their form, not email",
+          "url": "https://giantant.ca/get-in-touch",
+          "why": "top-tier AE explainer studio"
+        },
+        {
+          "label": "Epipheo: subcontractor animator",
+          "url": "https://epipheo.com/careers/subcontractor-animator/",
+          "why": "ask if they accept a W-8BEN"
+        },
+        {
+          "label": "Thinkmojo: hello@thinkmojo.com with portfolio + rate",
+          "url": "mailto:hello@thinkmojo.com",
+          "why": "distributed team"
+        },
+        {
+          "label": "Golden Wolf: Jobs@goldenwolf.tv (speculative)",
+          "url": "mailto:Jobs@goldenwolf.tv",
+          "why": ""
+        },
+        {
+          "label": "Buck: careers@buck.co",
+          "url": "mailto:careers@buck.co",
+          "why": ""
+        },
+        {
+          "label": "Stash Jobs: motion studio freelance calls",
+          "url": "https://jobs.stashmedia.tv/",
+          "why": "set its job alerts"
+        }
+      ]
+    },
+    {
+      "group": "New agency openings: weekly Google searches (past week)",
+      "note": "Agencies post on their own hiring pages. Run these once a week by hand; Google forbids scripted searching.",
+      "links": [
+        {
+          "label": "Lever pages: video editor / motion designer, remote",
+          "url": "https://www.google.com/search?q=site%3Ajobs.lever.co%20%28%22video%20editor%22%20OR%20%22motion%20designer%22%29%20%28remote%20OR%20global%20OR%20anywhere%29&tbs=qdr:w",
+          "why": ""
+        },
+        {
+          "label": "Greenhouse pages: video editor / motion designer, remote",
+          "url": "https://www.google.com/search?q=site%3Ajob-boards.greenhouse.io%20OR%20site%3Aboards.greenhouse.io%20%28%22video%20editor%22%20OR%20%22motion%20designer%22%29%20remote&tbs=qdr:w",
+          "why": ""
+        },
+        {
+          "label": "Ashby pages: video / motion / YouTube editor",
+          "url": "https://www.google.com/search?q=site%3Ajobs.ashbyhq.com%20%28%22video%20editor%22%20OR%20%22motion%20designer%22%20OR%20%22youtube%20editor%22%29&tbs=qdr:w",
+          "why": ""
+        },
+        {
+          "label": "Workable pages: video editor / motion designer, remote",
+          "url": "https://www.google.com/search?q=site%3Aapply.workable.com%20%28%22video%20editor%22%20OR%20%22motion%20designer%22%29%20remote&tbs=qdr:w",
+          "why": ""
+        },
+        {
+          "label": "Breezy pages: 'no location restrictions'",
+          "url": "https://www.google.com/search?q=site%3Abreezy.hr%20%28%22video%20editor%22%20OR%20%22motion%20designer%22%29%20%22no%20location%20restrictions%22&tbs=qdr:w",
+          "why": ""
+        },
+        {
+          "label": "Notion / Typeform / Tally application forms",
+          "url": "https://www.google.com/search?q=%28site%3Anotion.site%20OR%20site%3Atypeform.com%20OR%20site%3Atally.so%29%20%28%22video%20editor%22%20OR%20%22motion%20designer%22%29%20hiring&tbs=qdr:w",
+          "why": ""
+        },
+        {
+          "label": "Faceless channels hiring editors, worldwide",
+          "url": "https://www.google.com/search?q=%22hiring%22%20%22faceless%22%20%22video%20editor%22%20%28worldwide%20OR%20anywhere%29%20-upwork&tbs=qdr:w",
+          "why": ""
+        },
+        {
+          "label": "YouTube agencies 'work from anywhere'",
+          "url": "https://www.google.com/search?q=%22youtube%20editor%22%20agency%20%22work%20from%20anywhere%22%20OR%20%22open%20to%20candidates%20worldwide%22&tbs=qdr:w",
+          "why": ""
+        }
+      ]
+    },
+    {
+      "group": "Job boards (search by hand: these sites ban bots)",
+      "note": "Apply yourself, then press Log so the tracker and your teammates know.",
+      "links": [
+        {
+          "label": "Upwork: {q}, verified clients, intermediate/expert budgets",
+          "url": "https://www.upwork.com/nx/search/jobs/?q={q}&sort=recency&payment_verified=1&contractor_tier=2,3",
+          "why": "manual only, no extensions"
+        },
+        {
+          "label": "LinkedIn Jobs: {q}, remote, worldwide, last 24h",
+          "url": "https://www.linkedin.com/jobs/search/?keywords={q}&location=Worldwide&geoId=92000000&f_WT=2&f_TPR=r86400",
+          "why": "Easy Apply by hand"
+        },
+        {
+          "label": "Freelancer.com: video editing projects",
+          "url": "https://www.freelancer.com/jobs/video-editing/",
+          "why": "600+ open; skip the $10 ones"
+        },
+        {
+          "label": "PeoplePerHour: {q}",
+          "url": "https://www.peopleperhour.com/freelance-jobs?q={q}",
+          "why": "many $100-500 jobs"
+        },
+        {
+          "label": "Twine: {q} jobs",
+          "url": "https://www.twine.net/jobs?q={q}",
+          "why": "fresh creative jobs, small"
+        },
+        {
+          "label": "Himalayas: {q}, worldwide",
+          "url": "https://himalayas.app/jobs?q={q}",
+          "why": "also scanned daily; filter Worldwide"
+        },
+        {
+          "label": "Jobgether: video editor (eligibility shown)",
+          "url": "https://jobgether.com/remote-jobs/video-editor",
+          "why": "look for 'Anywhere'"
+        },
+        {
+          "label": "Contra: {q}",
+          "url": "https://contra.com/jobs?q={q}",
+          "why": "0% commission; board needs Pro"
+        },
+        {
+          "label": "Hubstaff Talent: {q} (0% commission, agencies post)",
+          "url": "https://hubstafftalent.net/search/jobs?search%5Bkeywords%5D={q}",
+          "why": "global, client pays you directly"
+        },
+        {
+          "label": "DailyRemote: remote video editor jobs",
+          "url": "https://dailyremote.com/remote-video-editor-jobs",
+          "why": "pick the Worldwide tag"
+        },
+        {
+          "label": "Dynamite Jobs: remote jobs",
+          "url": "https://dynamitejobs.com/remote-jobs",
+          "why": "region-tagged; brands and agencies"
+        },
+        {
+          "label": "Hitmarker: gaming / esports content jobs",
+          "url": "https://hitmarker.net/jobs",
+          "why": "game studios and esports teams"
+        },
+        {
+          "label": "Toptal: apply once to the animator network",
+          "url": "https://www.toptal.com/freelance-jobs/designers/animators",
+          "why": "vetted; top rates once in"
+        },
+        {
+          "label": "YT Jobs: editing jobs",
+          "url": "https://ytjobs.co/job/search/video_editor",
+          "why": "scanned every morning; ~43 editing jobs a week"
+        },
+        {
+          "label": "Indeed: {q}, remote (mostly US-only)",
+          "url": "https://www.indeed.com/jobs?q={q}&l=Remote&fromage=3&sort=date",
+          "why": "check 'who can apply' first"
+        }
+      ]
+    },
+    {
+      "group": "Let clients come to you",
+      "note": "Profiles that bring work in without outreach.",
+      "links": [
+        {
+          "label": "Fiverr: see what sells for {q}",
+          "url": "https://www.fiverr.com/search/gigs?query={q}",
+          "why": "copy the packaging, not the price"
+        },
+        {
+          "label": "Contra: free profile",
+          "url": "https://contra.com/",
+          "why": ""
+        },
+        {
+          "label": "Twine: free profile",
+          "url": "https://www.twine.net/",
+          "why": "clients search editors here"
+        }
+      ]
+    },
+    {
+      "group": "Side income: clipping (pay per view)",
+      "note": "Not editing for one client: you cut short clips from big creators' videos and get paid per 1,000 views.",
+      "links": [
+        {
+          "label": "Whop: search 'Content Rewards' (clipping campaigns)",
+          "url": "https://whop.com/",
+          "why": "brands and creators pay per view; payout country list on Whop"
+        }
+      ]
+    },
+    {
+      "group": "Avoid (checked 2026-10-12)",
+      "note": "Don't apply: fake jobs, pay-to-join, unpaid test farms, non-payment reports, or pay set by your local income.",
+      "links": [
+        {
+          "label": "remoteworld.teamtailor.com: a DEMO site, the jobs aren't real",
+          "url": "https://remoteworld.teamtailor.com/",
+          "why": "shows 'Video Editor, paid in USD' posts that are fake"
+        },
+        {
+          "label": "Mandy / ProductionBase: pay to apply, mostly on-set UK/US",
+          "url": "https://www.mandy.com/",
+          "why": ""
+        },
+        {
+          "label": "OnlineJobs.ph: Filipino nationals only",
+          "url": "https://www.onlinejobs.ph/",
+          "why": ""
+        },
+        {
+          "label": "Unpaid 'test edits' longer than ~60 seconds (e.g. 3 reels from their footage)",
+          "url": "https://www.storyblocks.com/resources/?p=32236",
+          "why": "real clients pay for tests; watermark short samples, never send project files"
+        },
+        {
+          "label": "EZEdits: 'dont pay video editors right' (Glassdoor)",
+          "url": "https://www.glassdoor.co.in/Reviews/EZEdits-Reviews-E10478154.htm",
+          "why": ""
+        },
+        {
+          "label": "222agency: unpaid invoices of 800 GBP and $8,500 (Trustpilot)",
+          "url": "https://nz.trustpilot.com/review/www.222agency.co",
+          "why": ""
+        },
+        {
+          "label": "Anyone asking you to pay a 'processing' or 'security' fee",
+          "url": "https://www.trustpilot.com/review/superside.com?page=2",
+          "why": "impersonators of real agencies: trust only the company's own email domain"
+        },
+        {
+          "label": "Volume quotas at low pay (RevStone: 30 pieces/week at $4.50-9.50/hr; ShortVids $300-500/month)",
+          "url": "https://www.google.com/search?q=RevStone+video+editor",
+          "why": ""
+        },
+        {
+          "label": "Pay set by your local income (Increditors, Kimp ask your current salary)",
+          "url": "https://increditors.com/careers",
+          "why": "quote US-market rates or skip"
+        }
+      ]
+    }
+  ]
+}
