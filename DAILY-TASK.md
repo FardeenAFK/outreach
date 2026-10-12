@@ -25,7 +25,7 @@ Read `work/leads_to_draft.json` and `work/jobs_to_draft.json`. Write `work/draft
  "leads": [{"id": "UC...", "first": "...", "followups": ["...", "..."]},
            {"id": "UC...", "subject": "...", "first": "...", "followups": ["..."]}],
  "skip_leads": ["UC..."],
- "jobs": [{"id": "ytjobs:123", "proposal": "..."}],
+ "jobs": [{"id": "ytjobs:123", "proposal": "..."}, {"id": "<spec_pick id>", "proposal": "...", "spec_idea": "..."}],
  "skip_jobs": ["ytjobs:456"]}
 ```
 (`subject` only for leads whose `platform` is `email`.)
@@ -124,6 +124,19 @@ authorisation, thumbnail/writing-only, or a poor fit (`skip_jobs`). Jobs come fr
   first person, no greeting fluff; skip roles that need residence in one country or relocation.
   **OnlineJobs.ph**: skip if it requires living in the Philippines. **Bluesky / X posts**: 60-100 words, conversational.
 - Never write `[ADD ...]` placeholders in a proposal: the sender pastes it as it is.
+- **What wins (hiring creators' own words, researched 2026-10-12)**, in this order:
+  1. Proof you read the post: if it asks for a keyword or a first line ("PARALLAX", "SWIM"), start with it; answer
+     EVERY question it asks. Posts say they don't read applications that skip one.
+  2. Their format first: name the 1-2 skills that match their videos (maps, stat reveals, kinetic text, parallax
+     for documentary/explainer posts), not the whole profile.
+  3. One specific idea about THEIR content (their latest video's topic and how you'd handle its opening).
+  4. A flat price per video inside their stated range, turnaround and weekly capacity: take them from `apply_kit`
+     in jobs_to_draft.json when it has them; if it doesn't, offer the free test edit instead of a price.
+  5. Short. No life story, no "I am passionate", no list of every tool.
+- **`spec_pick`** in jobs_to_draft.json is today's single best job (best paid, freshest, closest match). For it, also
+  write `"spec_idea"`: 1-2 sentences saying which 10-20 second spec clip to make from their own material or topic
+  (e.g. "animated map of the route in their Bermuda video, 15 s, with a stat reveal of the 3 ships lost"). The sender
+  makes it by hand and attaches it; it is what gets top applicants shortlisted.
 - **Agency posts** (`[agency]` in the text, or a board ending in "(agency)"): agencies hire again and again, so these
   are worth the best proposal of the day. Mention volume and reliability (turnaround, revisions, consistency).
 - **Red flags: skip** (`skip_jobs`, and say why in the report): unpaid test edits longer than ~60 seconds or "3 reels

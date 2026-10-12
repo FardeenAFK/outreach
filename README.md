@@ -68,6 +68,24 @@ and does a first run (about 40 minutes).
 The queue is http://127.0.0.1:8777/ (bookmark it in the Chrome profile you send from). Optional: the same queue as a
 Chrome side panel via `chrome://extensions` → Developer mode → Load unpacked → the `extension` folder.
 
+## The best way to get editing clients (researched 2026-10-12)
+Measured on 345 live YT Jobs editor posts plus hiring creators' own advice. The queue's **Today's plan** card walks you
+through it every day.
+1. **Niche proof first.** 57% of posts ask for samples and creators reject off-niche reels. Make 3 spec pieces of 45-90 s
+   in your niche (e.g. an animated map sequence, a money story with stat reveals, a photo-parallax cold open) + one
+   30 s vertical cut, labelled as spec, on your YT Jobs profile and YouTube.
+2. **Fast, tailored applications to live posts** (the main lane, no ban risk): ~3 a day, best-paid and under 48 hours
+   old. Start with their keyword if they ask, answer every question, show 1-2 matching samples first, give a flat
+   price per video + turnaround + weekly capacity, and one specific idea about their latest video.
+3. **One 10-20 s spec clip a day** for the single best-fit job (the ⭐ spec pick). This is what gets you shortlisted.
+4. **One spec-first email a day** to a channel you can visibly improve: a 20-30 s re-edit of their own video, from
+   your own address, follow-ups on day 3 and 7. Small, targeted lists reply ~3x more than big blasts.
+5. **A few warm DMs only** (people who posted they're hiring). Mass DMs: 6,000 sent got 2 low-paid clients in one test.
+6. **After the first hire**: ask for a credit, offer a retainer after 2-3 videos, ask for referrals (where most
+   freelancers' work ends up coming from).
+Weekly: 3 X posts with before/after clips, an editing breakdown video in weeks 2 and 4. If replies stay under 1 in 20
+after 30 applications, change the samples, not the volume.
+
 ## Where jobs come from (all allowed by the sites themselves)
 Scanned every morning, only through feeds or APIs their owners publish for this, once a day, with a link back:
 YT Jobs, Himalayas, Remote First Jobs, Remote OK, Jobicy, Work With Indies, Open Assignments, Dribbble,

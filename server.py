@@ -585,7 +585,7 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/pipeline":
                 return self._send(200, pipeline(con, account))
             if u.path == "/api/jobs":
-                rows = con.execute("SELECT id, board, title, company, channel_url, pay, url, posted, fit, proposal, "
+                rows = con.execute("SELECT id, board, title, company, channel_url, pay, url, posted, fit, proposal, spec_idea, "
                                    "(text LIKE '[agency]%' OR board LIKE '%(agency)') AS agency FROM jobs "
                                    "WHERE status='drafted' ORDER BY fit DESC").fetchall()
                 return self._send(200, [dict(r) | {"pay_tier": pay_boost(r["pay"])} for r in rows])

@@ -251,3 +251,12 @@ table.t tr:last-child td { border-bottom: 0; }
   .hero .big { font-size: 26px; }
   .card { padding: 11px 10px 11px 13px; }
 }
+
+/* ---------- Today's plan */
+.plan summary { list-style: none; cursor: pointer; padding-bottom: 6px; }
+.plan summary::-webkit-details-marker { display: none; }
+.plan-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.plan-row .tick { width: 16px; flex: none; text-align: center; color: var(--faint); font-weight: 700; }
+.plan-row.done .tick { color: var(--ok); }
+.plan-row.done .plan-text { color: var(--muted); }
+.plan-row .plan-text { flex: 1; min-width: 0; }

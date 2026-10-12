@@ -233,6 +233,22 @@ kit = core.load_config().get("apply_kit")
 check("apply kit keeps only real answers; bad modes are ignored",
       kit == [{"label": "Rate", "text": "$50/video"}, {"label": "L" * 40, "text": "t"}] and core.load_config().get("dm_mode") == cfg_w.get("dm_mode"), kit)
 
+# newest posts first among equals; the day's spec pick carries its clip idea to the queue
+import datetime as _dt  # noqa: E402
+today_us = _dt.date.today().strftime("%m/%d/%Y")
+old_us = (_dt.date.today() - _dt.timedelta(days=20)).strftime("%m/%d/%Y")
+check("fresh posts (under 48 h) outrank old ones", engine.fresh_bonus(today_us) > engine.fresh_bonus(old_us) == 0
+      and engine.age_days(_dt.date.today().isoformat()) == 0 and engine.age_days("nonsense") is None)
+con.execute("DELETE FROM jobs WHERE id='ytjobs:selftestspec'")
+con.execute("INSERT INTO jobs(id, board, title, url, status, fit, text, created, updated) VALUES "
+            "('ytjobs:selftestspec','YT Jobs','Doc editor','https://ytjobs.co/job/1','to_draft',80,'x',?,?)", (core.now(), core.now()))
+con.commit()
+dfile = tmp / "drafts-spec.json"
+dfile.write_text(json.dumps({"jobs": [{"id": "ytjobs:selftestspec", "proposal": "Hi", "spec_idea": "15 s map of the route"}]}))
+engine.cmd_import_drafts(argparse.Namespace(file=str(dfile), account="me"))
+row = [j for j in call("/api/jobs")[1] if j["id"] == "ytjobs:selftestspec"]
+check("spec-clip idea is stored and shown with the proposal", row and row[0]["spec_idea"] == "15 s map of the route", row)
+
 srv.shutdown()
 ok = sum(r[0] for r in results)
 for passed, name, detail in results:

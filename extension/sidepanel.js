@@ -159,9 +159,11 @@ const currentCard = () => document.querySelector(`${cardSel()}.current:not(.leav
 async function renderToday() {
   const sec = $("today");
   if (!sec.childElementCount) put(sec, ...skeleton(3));
-  let q, props = [];
-  try { [q, props] = await Promise.all([api(`/api/queue?account=${enc(state.account)}`), api("/api/jobs").catch(() => [])]); }
-  catch (e) { return serverDown(sec, e); }
+  let q, props = [], st = null;
+  try {
+    [q, props, st] = await Promise.all([api(`/api/queue?account=${enc(state.account)}`), api("/api/jobs").catch(() => []),
+                                        api(`/api/stats?account=${enc(state.account)}`).catch(() => null)]);
+  } catch (e) { return serverDown(sec, e); }
   const groups = Object.entries(q).filter(([, g]) => g.cap);
   const left = groups.reduce((a, [, g]) => a + g.items.length, 0);
   const sent = groups.reduce((a, [, g]) => a + g.sent, 0);
@@ -170,6 +172,7 @@ async function renderToday() {
   const t = state.team;
   if (t && !t.ready) nodes.push(h("div", { class: "errbox" }, h("b", {}, "New drafts are paused: "), t.why,
     " ", h("a", { href: "#", onclick: (e) => { e.preventDefault(); show("team"); } }, "Open Team")));
+  nodes.push(planCard(props, st));
   if (props.length) nodes.push(h("button", { class: "okbox", style: "display:flex;width:100%;align-items:center;gap:10px;text-align:left;cursor:pointer;color:inherit",
     onclick: () => { store({ jobsView: "proposals" }); show("jobs"); } },
     h("b", { style: "font-size:18px" }, props.length), h("span", {}, props.length === 1 ? "job proposal is ready to send" : "job proposals are ready to send",
@@ -411,6 +414,53 @@ async function renderJobs() {
   setCurrent();
 }
 
+
+// ---------- Today's plan: the researched routine (2026-10-12: 345 live YT Jobs posts + hiring creators' advice)
+const PROOF = [["map", "Animated map sequence (true crime / history)"], ["money", "Money story: stat reveals + kinetic text"],
+               ["parallax", "Photo-parallax cold open"], ["vertical", "30-second vertical cut"]];
+function weekKey() {
+  const d = new Date(); const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return `${t.getUTCFullYear()}-W${Math.ceil(((t - y0) / 864e5 + 1) / 7)}`;
+}
+function planCard(props, s) {
+  const day = new Date().toISOString().slice(0, 10), wk = weekKey();
+  const p = state.plan && state.plan.day === day ? { ...state.plan } : { day };
+  const w = state.week && state.week.wk === wk ? { ...state.week } : { wk, x: 0 };
+  const proof = { ...(state.proof || {}) };
+  const applied = (s && s.applied_today) || 0;
+  const sent = s ? Object.values(s.sent_today || {}).reduce((a, b) => a + b, 0) : 0;
+  const pick = props.find((j) => j.spec_idea);
+  const set = async (key, val) => { await store({ [key]: val }); renderToday(); };
+  const flip = (obj, k, key) => h("button", { class: "btn ghost small", onclick: () => set(key, { ...obj, [k]: !obj[k] }) }, obj[k] ? "Undo" : "Done");
+  const row = (done, label, ...extra) => h("div", { class: "plan-row" + (done ? " done" : "") },
+    h("span", { class: "tick" }, done ? "✓" : "○"), h("div", { class: "plan-text" }, label), ...extra);
+  const proofDone = PROOF.every(([k]) => proof[k]);
+  const card = h("details", { class: "panel plan", open: state.planOpen !== false },
+    h("summary", { onclick: (e) => { e.preventDefault(); store({ planOpen: !(state.planOpen !== false) }); renderToday(); } },
+      h("b", {}, "Today's plan"), h("span", { class: "muted small" }, " · applications first, a few warm DMs")),
+    proofDone ? null : row(false, [h("b", {}, "First: build your proof (days 1-7). "),
+      "Make 3 spec pieces of 45-90 s + 1 vertical cut in your niche, label them as spec, put them on your YT Jobs profile and YouTube. ",
+      "Most posts ask for samples; matching samples are what wins.",
+      h("div", { class: "chips", style: "margin-top:6px" }, ...PROOF.map(([k, label]) =>
+        h("button", { class: "fchip" + (proof[k] ? " on" : ""), onclick: () => set("proof", { ...proof, [k]: !proof[k] }) }, (proof[k] ? "✓ " : "") + label)))]),
+    row(applied >= 3, [h("b", {}, `Apply to the 3 best jobs (${Math.min(applied, 3)}/3). `),
+      "Best-paid and newest first: posts under 48 hours old win. Answer every question in the post, start with their keyword if they ask for one."],
+      h("button", { class: "btn small", onclick: () => { store({ jobsView: "proposals" }); show("jobs"); } }, "Proposals →")),
+    row(!!p.spec, [h("b", {}, "Make 1 spec clip (10-20 s) "), pick ? ["for ⭐ ", h("i", {}, pick.title), ": ", pick.spec_idea]
+      : "for the best-fit job of the day, from their own topic or footage, and attach it to that application."], flip(p, "spec", "plan")),
+    row(!!p.email, [h("b", {}, "Send 1 spec-first email. "),
+      "Pick one channel (10K-500K subs, active, business email) whose videos you can visibly improve; send a 20-30 s re-edit of their own video. Follow up on day 3 and day 7."], flip(p, "email", "plan")),
+    row(sent >= 3, [h("b", {}, `Up to 3 DMs (${sent} today), `), "only to people who posted that they're hiring."]),
+    row(w.x >= 3 && w.breakdown, [h("b", {}, `This week: ${Math.min(w.x, 3)}/3 X posts`), " (before/after clips of your spec pieces)",
+      h("b", {}, " + 1 editing breakdown video"), " (weeks 2 and 4)."],
+      h("button", { class: "btn ghost small", onclick: () => set("week", { ...w, x: (w.x || 0) + 1 }) }, "+1 post"),
+      flip(w, "breakdown", "week")),
+    h("p", { class: "muted small", style: "margin:8px 0 2px" }, "If replies stay under 1 in 20 after 30 applications, change the samples (closest match first), not the volume. After the first hire: ask for a credit, offer a retainer after 2-3 videos, ask for referrals."));
+  return card;
+}
+
 function proposalCard(j) {
   const ta = h("textarea", { class: "body", value: j.proposal || "" });
   const card = h("div", { class: "card prop", "data-id": j.id });
@@ -438,7 +488,9 @@ function proposalCard(j) {
         h("div", { class: "meta" }, [j.company, j.board, j.pay !== "unlisted" ? j.pay : null, j.posted && `posted ${j.posted}`].filter(Boolean).join(" · "))),
       h("span", { class: "row", style: "gap:6px" }, j.pay_tier >= 12 ? h("span", { class: "tag good" }, "$$$ high pay") : null,
         j.agency ? h("span", { class: "tag warn" }, "agency") : null,
+        j.spec_idea ? h("span", { class: "tag good" }, "⭐ spec pick") : null,
         h("span", { class: "tag" }, j.board || `fit ${Math.round(j.fit)}`))),
+    j.spec_idea ? h("div", { class: "hiring" }, h("b", {}, "⭐ Today's spec pick: "), "make a 10-20 s clip and attach it. Idea: ", j.spec_idea) : null,
     ta,
     h("div", { class: "actions" },
       h("button", { class: "primary", onclick: open }, "Open job + copy", h("kbd", {}, "O")),
@@ -891,7 +943,8 @@ document.addEventListener("keydown", (e) => {
 });
 
 async function init() {
-  try { Object.assign(state, await chrome.storage.local.get(["server", "account", "tab", "filter", "focus", "theme", "jobsView"])); } catch (_) {}
+  try { Object.assign(state, await chrome.storage.local.get(["server", "account", "tab", "filter", "focus", "theme", "jobsView",
+                                                                     "plan", "week", "proof", "planOpen"])); } catch (_) {}
   state.server = state.server || DEFAULT_SERVER;
   state.account = state.account || "me";
   setTheme(state.theme || "system");

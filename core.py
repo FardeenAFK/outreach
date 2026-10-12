@@ -133,6 +133,8 @@ def db():
         con.execute("ALTER TABLE jobs ADD COLUMN dm_checked TEXT")
     if "subject" not in {r[1] for r in con.execute("PRAGMA table_info(messages)")}:  # migration: email subject lines
         con.execute("ALTER TABLE messages ADD COLUMN subject TEXT")
+    if "spec_idea" not in {r[1] for r in con.execute("PRAGMA table_info(jobs)")}:  # migration: today's spec-clip idea
+        con.execute("ALTER TABLE jobs ADD COLUMN spec_idea TEXT")
     return con
 
 

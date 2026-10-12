@@ -603,8 +603,8 @@ def cmd_import_drafts(args):
     for j in data.get("jobs", []):
         if not (j.get("proposal") or "").strip():
             print("skipped empty proposal", j.get("id")); continue
-        con.execute("UPDATE jobs SET proposal=?, status='drafted', updated=? WHERE id=? AND status IN ('new','to_draft')",
-                    (j["proposal"].strip(), now(), j["id"]))
+        con.execute("UPDATE jobs SET proposal=?, spec_idea=?, status='drafted', updated=? WHERE id=? AND status IN ('new','to_draft')",
+                    (j["proposal"].strip(), (j.get("spec_idea") or "").strip()[:600] or None, now(), j["id"]))
         n_jobs += 1
     for jid in data.get("skip_jobs", []):
         con.execute("UPDATE jobs SET status='skipped', updated=? WHERE id=?", (now(), jid))
@@ -726,16 +726,22 @@ def cmd_jobs(args):
     if not ok:
         print("jobs: NOT DRAFTING PROPOSALS TODAY:", why)
     partner_posts = {r[0] for r in con.execute("SELECT job_id FROM leads WHERE job_id IS NOT NULL AND status='partner'")}
-    rows = [r for r in con.execute("SELECT * FROM jobs WHERE status='new' ORDER BY fit DESC").fetchall()
+    rows = [r for r in con.execute("SELECT * FROM jobs WHERE status='new'").fetchall()
             if ok and lead_owner(cfg, r["id"]) == me and not taken.who(r["id"], r["url"])
-            and r["id"] not in partner_posts][:cfg["daily"]["jobs_to_draft"]]  # teammates never apply to the same post
+            and r["id"] not in partner_posts]  # teammates never apply to the same post
+    # fresh posts first among equals: applying in the first 48 hours is what wins (2026-10-12 research)
+    rows = sorted(rows, key=lambda r: -((r["fit"] or 0) + fresh_bonus(r["posted"])))[:cfg["daily"]["jobs_to_draft"]]
     out = [{"id": r["id"], "title": r["title"], "company": r["company"], "channel": r["channel_url"], "pay": r["pay"],
-            "url": r["url"], "posted": r["posted"], "fit": r["fit"], "text": r["text"][:2500]} for r in rows]
+            "url": r["url"], "posted": r["posted"], "age_days": age_days(r["posted"]), "fit": r["fit"],
+            "board": r["board"], "text": r["text"][:2500]} for r in rows]
     for r in rows:
         con.execute("UPDATE jobs SET status='to_draft' WHERE id=?", (r["id"],))
     con.commit()
+    kit = [k for k in cfg.get("apply_kit") or [] if "[ADD" not in k.get("text", "")]  # rate, turnaround... once filled in
     (WORK / "jobs_to_draft.json").write_text(json.dumps({"sender_name": cfg["sender_name"],
-                                                         "sender_us_based": bool(cfg.get("us_based")), "jobs": out}, indent=1, ensure_ascii=False), encoding="utf-8")
+                                                         "sender_us_based": bool(cfg.get("us_based")), "apply_kit": kit,
+                                                         "spec_pick": out[0]["id"] if out else None, "jobs": out},
+                                                        indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"YT Jobs: scanned {seen_pages} pages, {new} new matching jobs, {len(out)} exported for proposals")
 
 
@@ -928,6 +934,21 @@ BOARD_TITLE = re.compile(r"video[ -]?edit|motion (design|graphic)|youtube|video 
 BOARD_SKIP = re.compile(r"interpreter|engineer|manager|copy[ -]?editor|editor[- ]in[- ]chief|news editor|managing editor|"
                         r"features editor|photo editor|writer|developer|3d (character )?rigger", re.I)
 HIRING_POST = re.compile(r"#hiring|\[hiring\]|\bis hiring\b|^\W*hiring\b|\bwe'?re hiring\b|\bapply\b|\bjob:", re.I | re.M)
+
+
+def age_days(posted):
+    """Days since a post went up (YT Jobs 'MM/DD/YYYY' or ISO dates), or None."""
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d"):
+        try:
+            return (dt.date.today() - dt.datetime.strptime((posted or "")[:10], fmt).date()).days
+        except ValueError:
+            pass
+    return None
+
+
+def fresh_bonus(posted):
+    a = age_days(posted)
+    return 0 if a is None else 10 if a <= 2 else 4 if a <= 7 else 0
 
 
 def pay_boost(pay, text="", per=None):
