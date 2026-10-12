@@ -61,6 +61,9 @@ def queue(con, cfg, account):
     caps = effective_caps(cfg, account)
     out = {}
     footer = email_footer(cfg)
+    # Low-DM mode also applies to first messages drafted before it was switched on: cold channels wait,
+    # only people who posted that they're hiring get a social DM (follow-ups to people already contacted still show)
+    warm = cfg.get("dm_mode", "all") == "warm"
     for p in PLATFORMS:
         sent = con.execute("SELECT COUNT(*) FROM events WHERE day=? AND type='sent' AND account=? AND platform=?",
                            (today(), account, p)).fetchone()[0]
@@ -70,8 +73,10 @@ def queue(con, cfg, account):
                WHERE m.account=? AND m.platform=? AND m.status='queued' AND m.due_date<=?
                  AND m.step=(SELECT MIN(step) FROM messages WHERE lead_id=m.lead_id AND account=m.account
                              AND status IN ('queued','waiting'))
+                 AND (? = 0 OR m.platform = 'email' OR l.job_id IS NOT NULL OR m.sent_at IS NOT NULL
+                      OR EXISTS (SELECT 1 FROM messages s WHERE s.lead_id=m.lead_id AND s.status='sent'))
                ORDER BY (m.step>0) DESC, l.score DESC, m.id LIMIT ?""",
-            (account, p, today(), remaining)).fetchall()
+            (account, p, today(), 1 if warm else 0, remaining)).fetchall()
         out[p] = {"cap": caps[p], "sent": sent, "remaining": remaining,
                   "items": [{"id": r["id"], "lead_id": r["lead_id"], "platform": p, "step": r["step"],
                              "profile_url": r["profile_url"], "body": r["body"], "subject": r["subject"],
