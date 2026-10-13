@@ -461,6 +461,30 @@ function planCard(props, s) {
   return card;
 }
 
+// One click copies a complete build prompt for a 10-20 s spec clip; paste it into Claude Code and it builds the clip.
+function specPrompt(j) {
+  const slug = String(j.id || "job").replace(/[^a-z0-9]+/gi, "-").slice(0, 40);
+  return [
+    "Build a 10-20 second SPEC clip for a job application, in After Effects through Enma, in my house style (load the setsumei skill; pick the skin that fits their channel).",
+    "",
+    `Job: ${j.title}${j.company ? " - " + j.company : ""} (${j.board || "job board"})`,
+    `Link: ${j.url}`,
+    j.pay && j.pay !== "unlisted" ? `Pay: ${j.pay}` : null,
+    "",
+    "What they asked for:",
+    (j.brief || "(open the link and read the post first)").trim(),
+    "",
+    `Clip idea: ${j.spec_idea || "pick the single strongest 10-20 s idea from their topic or their latest video (a map, a stat reveal, kinetic title or a photo-parallax shot)"}`,
+    "",
+    "Rules:",
+    "- Confirm the plan with me in 3 lines before building.",
+    "- Only public-domain, licensed or my own assets; ask before downloading anything.",
+    "- Narration only if it helps: Koe voice Ranger (am_santa,am_michael).",
+    "- 1920x1080, or 1080x1920 if they make Shorts/Reels. Burn a small 'SPEC' label in a corner.",
+    `- Render to E:\\SpecClips\\${slug}.mp4 and check the file exists before saying it is done.`,
+  ].filter((x) => x !== null).join("\n");
+}
+
 function proposalCard(j) {
   const ta = h("textarea", { class: "body", value: j.proposal || "" });
   const card = h("div", { class: "card prop", "data-id": j.id });
@@ -496,6 +520,13 @@ function proposalCard(j) {
       h("button", { class: "primary", onclick: open }, "Open job + copy", h("kbd", {}, "O")),
       h("button", { class: "ok", onclick: card.actions.sent, title: "Marks it applied, then opens + copies the next one (A)" }, "Applied ✓ → next", h("kbd", {}, "A")),
       h("span", { class: "spacer" }),
+      h("button", { class: "btn ghost", title: "Copies a full Claude prompt that builds a 10-20 s spec clip for this job",
+        onclick: async (ev) => {
+          const b = ev.currentTarget;
+          try { await navigator.clipboard.writeText(specPrompt(j)); b.textContent = "Prompt copied ✓"; toast("Paste it into Claude Code: it will plan the clip with you, then build it."); }
+          catch (_) { toast("Copy failed. Try again.", null, "bad"); }
+          setTimeout(() => { b.textContent = "Spec clip prompt"; }, 2500);
+        } }, "Spec clip prompt"),
       h("button", { class: "btn ghost", onclick: card.actions.skip, title: "X" }, "Skip"))]);
   requestAnimationFrame(() => autosize(ta));
   return card;
